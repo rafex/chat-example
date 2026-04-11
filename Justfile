@@ -81,24 +81,37 @@ install-chat:
     python3 -m venv {{CHAT_VENV_DIR}}
     {{CHAT_VENV_DIR}}/bin/pip install -r {{CHAT_DIR}}/requirements.txt
 
-# Ejecutar chat CLI interactivo
+# Ejecutar chat CLI interactivo (climático)
 chat:
     @echo "🌤️ Iniciando chat climatológico..."
     cd poc/agent-weather && source venv/bin/activate && python src/chat_cli.py
+
+# Ejecutar chat CLI interactivo (genérico)
+chat-generic:
+    @echo "🤖 Iniciando chat genérico con herramientas..."
+    cd poc/agent-weather && source venv/bin/activate && python src/chat_cli_generic.py
 
 # Ejecutar chat CLI con modo prueba (sin interfaz interactiva)
 chat-test:
     @echo "🧪 Ejecutando chat CLI en modo prueba..."
     cd poc/agent-weather && source venv/bin/activate && python src/test_chat.py
 
+# Ejecutar pruebas del chat genérico
+chat-generic-test:
+    @echo "🧪 Ejecutando pruebas del chat genérico..."
+    cd poc/agent-weather && source venv/bin/activate && python src/test_generic_chat.py
+
 # Ver comandos disponibles del chat
 chat-help:
     @echo "📖 Comandos disponibles para el chat CLI:"
-    @echo "  just chat              - Iniciar chat interactivo"
-    @echo "  just chat-test         - Probar chat sin interfaz interactiva"
+    @echo "  just chat              - Iniciar chat climático"
+    @echo "  just chat-generic      - Iniciar chat genérico (recomendado)"
+    @echo "  just chat-test         - Probar chat climático"
+    @echo "  just chat-generic-test - Probar chat genérico"
     @echo ""
     @echo "Comandos dentro del chat:"
     @echo "  'salir' o 'exit'       - Salir del chat"
     @echo "  'limpiar' o 'clear'    - Limpiar pantalla"
     @echo "  'historial'            - Ver historial reciente"
     @echo "  'ayuda'                - Ver ayuda del asistente"
+    @echo "  'herramientas'         - Ver herramientas disponibles"

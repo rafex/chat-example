@@ -47,9 +47,9 @@ def show_config():
     """Muestra la configuración actual"""
     print("\n=== Configuración Actual ===")
     print(f"OPENWEATHER_API_KEY: {'Configurada' if Config.OPENWEATHER_API_KEY else 'Faltante'}")
-    print(f"DEEPSEEK_API_KEY: {'Configurada' if Config.DEEPSEEK_API_KEY else 'Faltante'}")
-    print(f"DEEPSEEK_API_BASE: {Config.DEEPSEEK_API_BASE}")
-    print(f"DEEPSEEK_MODEL: {Config.DEEPSEEK_MODEL}")
+    print(f"LLM_PROVIDER_API_KEY: {'Configurada' if Config.get_llm_api_key() else 'Faltante'}")
+    print(f"LLM_PROVIDER_API_BASE: {Config.get_llm_api_base()}")
+    print(f"LLM_PROVIDER_MODEL: {Config.get_llm_model()}")
 
 if __name__ == "__main__":
     show_config()

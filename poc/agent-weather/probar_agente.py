@@ -98,9 +98,9 @@ def mostrar_info():
         
         print("Configuración actual:")
         print(f"  • OpenWeatherMap API: {'✅ Configurada' if Config.OPENWEATHER_API_KEY else '❌ Faltante'}")
-        print(f"  • DeepSeek API: {'✅ Configurada' if Config.DEEPSEEK_API_KEY else '❌ Faltante'}")
-        print(f"  • Modelo DeepSeek: {Config.DEEPSEEK_MODEL}")
-        print(f"  • URL API DeepSeek: {Config.DEEPSEEK_API_BASE}")
+        print(f"  • LLM Provider API: {'✅ Configurada' if Config.get_llm_api_key() else '❌ Faltante'}")
+        print(f"  • Modelo LLM: {Config.get_llm_model()}")
+        print(f"  • URL API LLM: {Config.get_llm_api_base()}")
         
         # Verificar .env
         env_path = os.path.join(project_root, '.env')
