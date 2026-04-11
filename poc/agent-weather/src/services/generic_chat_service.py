@@ -52,7 +52,12 @@ class GenericChatService:
 
     def get_system_prompt(self) -> str:
         """Prompt del sistema para el asistente"""
-        return """Eres un asistente conversacional útil y amigable.
+        return f"""Eres un asistente conversacional útil y amigable.
+
+MODELO:
+- Usas el modelo {self.llm_service.model if self.llm_service else 'LLM'}
+- Estás ejecutando en {self.llm_service.client.base_url if self.llm_service else 'URL desconocida'}
+- Interfaz: OpenAI-compatible
 
 CAPACIDADES:
 - Puedes conversar sobre cualquier tema general
@@ -62,7 +67,7 @@ CAPACIDADES:
 INSTRUCCIONES:
 - Sé conciso pero informativo
 - Usa emojis cuando sea apropiado
-- Si no conoces algo, sé honesto y ofrece buscar más información
+- Si te preguntan qué modelo eres, sé honesto y menciona que usas DeepSeek (o el modelo configurado)
 - Para consultas de clima, extrae la ubicación y usa la herramienta
 
 HERRAMIENTAS DISPONIBLES:
