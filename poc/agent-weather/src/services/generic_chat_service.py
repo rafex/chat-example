@@ -124,22 +124,17 @@ HERRAMIENTAS DISPONIBLES:
         # 1. Detectar herramienta de saludo (MCP)
         # Patrones para detectar saludos en diferentes idiomas
         hello_patterns = [
-            'hola', 'hello', 'bonjour', 'ni hao', 'namaste', 
-            'marhaban', 'nomoskar', 'ola', 'privet', 'assalam'
+            'hola', 'hello', 'bonjour', 'nomoskar', 'ola', 'privet'
         ]
         
-        # Mapeo de palabras de saludo a idiomas
+        # Mapeo de palabras de saludo a idiomas (solo idiomas soportados por el backend API)
         hello_lang_map = {
             'hola': 'es',
             'hello': 'en',
             'bonjour': 'fr',
-            'ni hao': 'zh',
-            'namaste': 'hi',
-            'marhaban': 'ar',
             'nomoskar': 'bn',
             'ola': 'pt',
             'privet': 'ru',
-            'assalam': 'ar',
         }
         
         # Si el mensaje contiene palabras de saludo y/o pide un saludo
@@ -261,9 +256,6 @@ HERRAMIENTAS DISPONIBLES:
             'en': ['english', 'inglés', 'ingles'],
             'es': ['español', 'espanol', 'spanish'],
             'fr': ['francés', 'frances', 'french'],
-            'zh': ['chino', 'chinese'],
-            'hi': ['hindi', 'hindú'],
-            'ar': ['árabe', 'arabe', 'arabic'],
             'bn': ['bengalí', 'bengali'],
             'pt': ['portugués', 'portugues', 'portuguese'],
             'ru': ['ruso', 'russian'],

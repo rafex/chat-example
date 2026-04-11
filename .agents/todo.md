@@ -61,6 +61,7 @@
 | Justfile | ✅ Actualizado | Comandos de chat añadidos |
 | OpenWeatherMap | ✅ Activa | API funcionando correctamente |
 | DeepSeek API | ✅ Configurada | Lista para uso |
+| Chat Genérico | ✅ Completo | Con soporte MCP para saludos (poc/chatCLI/) |
 
 ## ✅ TAREAS PENDIENTES COMPLETADAS
 
@@ -87,26 +88,29 @@
 ## 📋 ARCHIVOS CLAVE DEL PROYECTO
 
 ```
-poc/agent-weather/
+poc/agent-weather/                   # Agente meteorológico (servicio)
 ├── src/
 │   ├── agents/weather_agent.py      # Flujo LangGraph
 │   ├── services/
 │   │   ├── weather_service.py       # OpenWeatherMap
 │   │   ├── deepseek_service.py      # DeepSeek LLM
-│   │   └── weather_chat_agent.py    # Agente de chat
+│   │   ├── generic_chat_service.py  # Chat genérico con herramientas
+│   │   └── mcp_service.py           # Servidor MCP
 │   ├── schemas/
 │   │   ├── weather.py               # Modelos climáticos
 │   │   └── chat.py                  # Modelos de chat
-│   ├── config.py                    # Configuración
-│   ├── chat_cli.py                  # Chat interactivo
-│   └── test_chat.py                 # Pruebas chat
+│   └── config.py                    # Configuración
 ├── venv/                            # Entorno virtual
 ├── .env                             # API keys (ignorado)
 ├── .env.example                     # Plantilla
 ├── requirements.txt                 # Dependencias
-├── CHAT_README.md                   # Doc chat
-├── CHAT_USAGE.md                    # Uso rápido
-└── demo_chat.py                     # Demostración
+
+poc/chatCLI/                         # Chat CLI (cliente)
+├── src/
+│   ├── chat_cli.py                  # Chat interactivo genérico
+│   └── test_chat.py                 # Pruebas chat
+├── venv/                            # Entorno virtual
+├── requirements.txt                 # Dependencias
 ```
 
 ## 📊 RESUMEN DE COMMITS

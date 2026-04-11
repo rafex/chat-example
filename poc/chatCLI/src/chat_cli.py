@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
 """
-Chat CLI Interactivo para el Agente Meteorológico
+Chat CLI Interactivo Genérico con Herramientas
+
+Este chat permite:
+1. Conversación general con el LLM
+2. Consultas de clima usando la herramienta get_weather
+3. Preparación para integrar MCP en el futuro
 """
 
 import sys
 import os
 import uuid
 
-# Configurar paths - ejecutar desde poc/agent-weather
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, project_root)
+# Configurar paths para importar desde poc/agent-weather
+agent_weather_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'agent-weather')
+sys.path.insert(0, agent_weather_path)
 
+# Importar desde poc/agent-weather
 from src.schemas.chat import ChatSession, MessageType, Message
 from src.services.generic_chat_service import GenericChatService
 
@@ -25,10 +31,10 @@ def print_banner():
     banner = """
 ╔══════════════════════════════════════════════════════════════════════╗
 ║                                                                      ║
-║              🌤️  CHAT CLIMATOLÓGICO CON DEEPSEEK  🤖                 ║
+║              🤖  CHAT CONVERSACIONAL CON HERRAMIENTAS  🧠            ║
 ║                                                                      ║
-║  Bienvenido al asistente meteorológico interactivo                   ║
-║  Pregunta sobre el clima de cualquier ciudad del mundo               ║
+║  Asistente conversacional con capacidad de consultar el clima       ║
+║  y responder a cualquier consulta general                           ║
 ║                                                                      ║
 ╚══════════════════════════════════════════════════════════════════════╝
     """
@@ -42,7 +48,7 @@ def format_message(msg):
     if msg.type == MessageType.USER:
         return f"\n👤 TÚ [{timestamp}]: {msg.content}"
     elif msg.type == MessageType.ASSISTANT:
-        return f"\n🤖 CLIMA-BOT [{timestamp}]:\n{msg.content}"
+        return f"\n🤖 ASISTENTE [{timestamp}]:\n{msg.content}"
     elif msg.type == MessageType.SYSTEM:
         return f"\nℹ️  SISTEMA: {msg.content}"
     else:
@@ -55,24 +61,26 @@ def main():
         clear_screen()
         print_banner()
 
-        # Inicializar sesión y agente
+        # Inicializar sesión y servicio de chat
         session_id = str(uuid.uuid4())[:8]
         chat_session = ChatSession(id=session_id)
-        agent = GenericChatService()
+        chat_service = GenericChatService()
 
         print(f"\n💡 Sesión iniciada: {session_id}")
         print("💡 Escribe 'salir' o 'exit' para terminar")
         print("💡 Escribe 'ayuda' para ver comandos disponibles")
+        print("💡 Escribe 'herramientas' para ver herramientas disponibles")
         print("-" * 70)
 
         # Mensaje de bienvenida del asistente
         welcome_msg = Message(
             type=MessageType.ASSISTANT,
-            content="👋 ¡Hola! Soy tu asistente conversacional.\n"
-                    "Puedes preguntarme sobre el clima de cualquier ciudad, o saludarme en diferentes idiomas.\n"
+            content="🤖 ¡Hola! Soy tu asistente conversacional.\n"
+                    "Puedo conversar sobre cualquier tema y también consultar el clima.\n"
+                    "Prueba con:\n"
+                    "• '¿Cómo estás?'\n"
                     "• '¿Cómo está el clima en Madrid?'\n"
-                    "• 'Di hola en francés'\n"
-                    "• 'Saluda a Juan en español'\n\n"
+                    "• 'Explícame el concepto de inteligencia artificial'\n\n"
                     "Escribe 'ayuda' para más información."
         )
         chat_session.add_message(welcome_msg.type, welcome_msg.content)
@@ -106,38 +114,39 @@ def main():
                         print(format_message(msg))
                     continue
 
+                if user_input.lower() in ['herramientas', 'tools']:
+                    print("\n🔧 HERRAMIENTAS DISPONIBLES:")
+                    print("• get_weather(location): Consulta el clima de una ciudad")
+                    continue
+
                 if user_input == '':
                     continue
 
-                # Procesar mensaje con el agente
-                # Convertir mensajes a formato de diccionario para GenericChatService
-                conversation_history = []
-                for msg in chat_session.messages:
-                    conversation_history.append({
-                        "role": "user" if msg.type == MessageType.USER else "assistant",
-                        "content": msg.content
-                    })
-                
-                result = agent.chat(user_input, conversation_history)
+                # Preparar historial para el servicio de chat
+                conversation_history = [
+                    {"role": msg.type.value, "content": msg.content}
+                    for msg in chat_session.messages
+                ]
 
-                # Extraer respuesta del resultado
-                if result.get('response'):
-                    response_content = result['response']
-                else:
-                    response_content = "No pude procesar tu mensaje."
+                # Procesar mensaje con el servicio de chat
+                result = chat_service.chat(user_input, conversation_history)
 
-                # Crear mensaje de respuesta
-                response = Message(
+                # Mostrar indicador si se usó una herramienta
+                if result.get('tool_used'):
+                    print(f"\n🔧 Usando herramienta: {result['tool_used']} con {result['tool_args']}")
+
+                # Crear mensaje del asistente
+                assistant_msg = Message(
                     type=MessageType.ASSISTANT,
-                    content=response_content
+                    content=result['response']
                 )
 
                 # Guardar en el historial
                 chat_session.add_message(MessageType.USER, user_input)
-                chat_session.add_message(response.type, response.content)
+                chat_session.add_message(assistant_msg.type, assistant_msg.content, result)
 
                 # Mostrar respuesta
-                print(format_message(response))
+                print(format_message(assistant_msg))
 
             except KeyboardInterrupt:
                 print("\n\n👋 Saliendo del chat...")
