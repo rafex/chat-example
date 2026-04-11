@@ -6,7 +6,11 @@ __pycache__/
 .Python
 venv/
 env/
+
+# Environment variables (ignorar .env pero no .env.example)
+.env
 .env.local
+.env.production
 
 # IDE
 .vscode/
@@ -14,3 +18,21 @@ env/
 
 # Pytest
 .pytest_cache/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+*.whl
+*.tar.gz
+
+# Coverage
+.coverage
+htmlcov/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
