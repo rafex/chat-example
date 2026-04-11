@@ -62,10 +62,19 @@
 - [x] Crear worktree para integración MCP
 - [x] Copiar estructura MCP a `lib/mcp`
 - [x] Crear router MCP unificado (`lib/mcp/router.py`)
-- [ ] Actualizar Chat CLI para usar router MCP
-- [ ] Registrar servicios en router MCP
-- [ ] Actualizar documentación arquitectura
-- [ ] Ejecutar pruebas de integración
+- [x] Actualizar Chat CLI para usar router MCP
+- [x] Registrar servicios en router MCP
+- [x] Actualizar documentación arquitectura
+- [x] Ejecutar pruebas de integración
+
+### 10. Agente Orquestador con LangGraph
+- [x] Crear estructura de agente orquestador
+- [x] Implementar StateGraph con LangGraph
+- [x] Crear análisis de intención
+- [x] Implementar wrappers para servicios
+- [x] Integrar agente orquestador en Chat CLI
+- [x] Probar integración completa
+- [x] Crear documentación del agente orquestador
 
 ## ✅ ESTADO ACTUAL DEL PROYECTO
 
@@ -80,6 +89,9 @@
 | OpenWeatherMap | ✅ Activa | API funcionando correctamente |
 | DeepSeek API | ✅ Configurada | Lista para uso |
 | Chat Genérico | ✅ Completo | Con soporte MCP y memoria FAISS (poc/chatCLI/) |
+| Agente Orquestador | ✅ Completo | LangGraph StateGraph con decisión de herramientas |
+| MCP Router | ✅ Integrado | Herramientas MCP en agente orquestador |
+| Memoria FAISS | ✅ Funcional | Contexto de conversación durante sesión |
 
 ## ✅ TAREAS PENDIENTES COMPLETADAS
 

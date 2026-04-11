@@ -1,68 +1,112 @@
-# Arquitectura MCP (Model Context Protocol)
+# Arquitectura del Sistema: MCP + Agente Orquestador
 
 ## Descripción General
 
-El proyecto ahora utiliza MCP (Model Context Protocol) para la comunicación entre componentes. MCP es un protocolo estándar para conectar LLMs con recursos y herramientas externos.
+El proyecto utiliza una arquitectura modular con:
+1. **MCP (Model Context Protocol)**: Protocolo estándar para conectar LLMs con recursos y herramientas externos
+2. **Agente Orquestador**: Cerebro central con LangGraph que decide qué herramienta usar según la intención del usuario
+3. **Memoria Temporal**: FAISS para mantener contexto de conversación durante la sesión
 
-## Componentes
+## Arquitectura del Sistema
 
-### 1. Router MCP (`lib/mcp/router.py`)
+```mermaid
+graph TD
+    A[Usuario] --> B[Chat CLI]
+    B --> C{Agente Orquestador}
+    C --> D[Agente Meteorológico]
+    C --> E[MCP Router]
+    C --> F[Chat Genérico]
+    D --> G[OpenWeatherMap API]
+    E --> H[Say Hello]
+    E --> I[Get Languages]
+    F --> J[DeepSeek LLM]
+    B --> K[Memoria FAISS]
+    
+    style C fill:#f9f,stroke:#333,stroke-width:2px
+    style K fill:#bbf,stroke:#333,stroke-width:2px
+```
 
-El router central que unifica todos los servicios MCP:
+## Componentes Principales
+
+### 1. Agente Orquestador (`poc/agent-orquestador/`)
+
+Cerebro central que orquesta el flujo de ejecución usando LangGraph:
+
+```python
+class OrquestadorState(TypedDict):
+    """Estado del agente orquestador"""
+    user_input: str
+    intent: Optional[str]
+    tool_to_use: Optional[ToolType]
+    tool_args: Optional[dict[str, Any]]
+    response: Optional[str]
+    history: Sequence[dict[str, str]]
+    error: Optional[str]
+```
+
+**Funcionalidades:**
+- **Análisis de intención**: Detecta si el usuario quiere clima, saludo MCP o conversación general
+- **Decisión de herramienta**: Usa LangGraph StateGraph para orquestar el flujo
+- **Ejecución condicional**: Llama al agente meteorológico, MCP Router o Chat genérico
+
+**Flujo LangGraph:**
+```
+Analyze Intent → Execute Tool → End
+```
+
+### 2. Wrappers de Servicios
+
+#### Weather Agent Wrapper
+- **Conexión con agente meteorológico** usando subprocess
+- **Extracción de ubicación** de texto del usuario
+- **Manejo de errores** sin API Key
+
+#### MCP Wrapper
+- **Conexión con MCP Router** usando JSON-RPC
+- **Ejecución de herramientas**: `say_hello`, `get_hello_languages`
+- **Listado de herramientas** disponibles
+
+### 3. Router MCP (`lib/mcp/router.py`)
+
+Unificador de servicios MCP:
 
 ```python
 class MCPRouter:
-    """Router que maneja múltiples servicios MCP."""
-    
     def __init__(self):
         self.tools: Dict[str, Callable] = {}
         self.resources: Dict[str, Callable] = {}
         self.prompts: Dict[str, Callable] = {}
 ```
 
-**Funcionalidades:**
-- Gestiona herramientas, recursos y prompts
-- Proporciona interfaz JSON-RPC para comunicación
-- Soporta inicialización, listado y ejecución
+**Herramientas disponibles:**
+- `say_hello(name, lang)`: Saludo personalizado en 10 idiomas
+- `get_hello_languages()`: Lista idiomas soportados
 
-### 2. Servicios MCP
+### 4. Chat CLI (`poc/chatCLI/src/chat_cli.py`)
 
-#### Servicio Hello (`lib/mcp/hello/`)
-- **Herramientas:**
-  - `say_hello(name, lang)`: Saludo personalizado
-  - `get_hello_languages()`: Idiomas soportados
-- **Recursos:**
-  - `hello://service-overview`: Información del servicio
-- **Prompts:**
-  - `greet-user`: Plantilla para saludos
-
-#### Servicio Clima (integración)
-- **Herramientas:**
-  - `get_weather(location)`: Consulta del clima
-- **Recursos:**
-  - `weather://current`: Clima actual
-- **Prompts:**
-  - `weather-report`: Reporte meteorológico
-
-### 3. Chat CLI (`poc/chatCLI/src/chat_cli.py`)
-
-Cliente que utiliza el router MCP:
+Cliente principal que ahora usa el agente orquestador:
 
 ```python
-# Inicializar router MCP
-mcp_router = MCPRouter()
-
-# Ejecutar herramienta MCP
-request = {
-    "method": "tools/call",
-    "id": 1,
-    "params": {
-        "name": "say_hello",
-        "arguments": {"name": "Juan", "lang": "es"}
-    }
-}
-response = mcp_router.handle_request(request)
+if ORQUESTADOR_AVAILABLE:
+    orquestador_result = run_orquestador(user_input, conversation_history)
+    response_text = orquestador_result['response']
+else:
+    # Fallback a agente meteorológico directo
+    ...
 ```
+
+**Comandos disponibles:**
+- `mcp list-tools`: Listar herramientas MCP
+- `say_hello(name=Juan, lang=es)`: Ejecutar herramienta directamente
+- Consultas de clima: "¿Cómo está el clima en Madrid?"
+
+### 5. Memoria Temporal con FAISS
+
+Almacenamiento de contexto durante la sesión:
+
+1. **Almacenamiento**: Mensajes convertidos a vectores TF-IDF
+2. **Búsqueda**: Recuperación de contexto relevante usando similitud coseno
+3. **Limpieza**: Memoria se borra al cerrar sesión
 
 ## Flujo de Comunicación
 
@@ -70,59 +114,101 @@ response = mcp_router.handle_request(request)
 sequenceDiagram
     participant User
     participant ChatCLI
+    participant AgenteOrquestador
+    participant WeatherAgent
     participant MCPRouter
-    participant Services
+    participant ChatGenerico
     
-    User->>ChatCLI: "Saluda a Juan en español"
-    ChatCLI->>MCPRouter: tools/call say_hello
-    MCPRouter->>Services: Ejecutar servicio hello
-    Services-->>MCPRouter: Resultado
-    MCPRouter-->>ChatCLI: Response JSON-RPC
-    ChatCLI-->>User: "¡Hola Juan!"
+    User->>ChatCLI: "¿Cómo está el clima en Madrid?"
+    ChatCLI->>AgenteOrquestador: run_orquestador(input)
+    AgenteOrquestador->>AgenteOrquestador: Analyze Intent
+    Note right of AgenteOrquestador: Intent: weather_query<br/>Tool: weather
+    
+    AgenteOrquestador->>WeatherAgent: execute_weather_agent("Madrid")
+    WeatherAgent->>WeatherAgent: Fetch weather data
+    WeatherAgent-->>AgenteOrquestador: Resultado
+    
+    AgenteOrquestador-->>ChatCLI: Formatted response
+    ChatCLI-->>User: Datos del clima + recomendaciones
 ```
 
 ## Implementación Actual
 
-### Chat CLI con MCP
+### Chat CLI con Agente Orquestador
 
 1. **Inicialización:**
    ```python
-   from mcp.router import MCPRouter
-   mcp_router = MCPRouter()
+   from src.agents.orquestador_agent import run_orquestador
    ```
 
-2. **Ejecución de herramientas:**
+2. **Ejecución:**
    ```python
-   request = {
-       "method": "tools/call",
-       "params": {
-           "name": "say_hello",
-           "arguments": {"name": name, "lang": lang}
-       }
-   }
-   response = mcp_router.handle_request(request)
+   result = run_orquestador(user_input, conversation_history)
+   if result['success']:
+       response_text = result['response']
    ```
 
-3. **Comandos MCP en Chat:**
-   - `mcp list-tools`: Listar herramientas disponibles
-   - `say_hello(nombre, idioma)`: Ejecutar herramienta
+3. **Análisis de intención automático:**
+   - **Clima**: Detecta palabras como "clima", "temperatura", "lluvia"
+   - **MCP**: Detecta comandos directos o palabras como "saludar"
+   - **Chat**: Conversación general
 
-### Memoria Temporal con FAISS
+### Ejemplos de Uso
 
-El chat CLI mantiene memoria temporal usando FAISS:
+```
+Usuario: "¿Cómo está el clima en Madrid?"
+→ Agente Orquestador detecta weather_query
+→ Ejecuta agente meteorológico
+→ Devuelve datos del clima + recomendaciones
 
-1. **Almacenamiento:** Mensajes se convierten a vectores TF-IDF
-2. **Búsqueda:** Recuperación de contexto relevante
-3. **Limpieza:** Memoria se borra al cerrar sesión
+Usuario: "say_hello(name=Juan, lang=es)"
+→ Agente Orquestador detecta mcp_say_hello
+→ Ejecuta herramienta MCP
+→ Devuelve "¡Hola Juan!"
+
+Usuario: "Hola, ¿cómo estás?"
+→ Agente Orquestador detecta conversación general
+→ Usa chat genérico con DeepSeek
+```
+
+## Estructura de Directorios
+
+```
+poc/agent-orquestador/
+├── src/
+│   ├── agents/
+│   │   └── orquestador_agent.py  # LangGraph StateGraph
+│   ├── schemas/
+│   │   └── orquestador.py         # Modelos de datos
+│   ├── services/
+│   │   ├── weather_agent_wrapper.py
+│   │   └── mcp_wrapper.py
+│   └── __init__.py
+├── requirements.txt
+├── test_orquestador.py
+└── venv/
+
+lib/mcp/
+├── router.py                      # MCP Router unificado
+├── hello/python/
+│   ├── server.py
+│   └── hello_service.py
+
+poc/chatCLI/src/
+├── chat_cli.py                    # Cliente con agente orquestador
+└── memory_manager.py              # FAISS para memoria temporal
+```
 
 ## Próximos Pasos
 
-1. **Integrar servicios de clima** en el router MCP
-2. **Actualizar Chat CLI** para usar herramientas MCP
-3. **Crear pruebas de integración** para MCP
-4. **Documentar API MCP** en `docs/api.md`
+1. **Integración completa del agente meteorológico** con API Key
+2. **Más herramientas MCP** para el router
+3. **Mejorar análisis de intención** con LLM
+4. **Crear pruebas automatizadas** para el agente orquestador
+5. **Documentar API completa** en `docs/api.md`
 
 ## Referencias
 
 - [MCP Specification](https://modelcontextprotocol.io)
-- [Repositorio ejemplo](~/repository/github/rafex/mcp-example)
+- [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
+- [Repositorio ejemplo MCP](~/repository/github/rafex/mcp-example)
