@@ -29,18 +29,23 @@ from src.schemas.chat import ChatSession, MessageType, Message
 from src.services.generic_chat_service import GenericChatService  # Mantener como fallback
 
 # Importar agente orquestador
-project_root_orquestador = os.path.join(project_root, 'poc', 'agent-orquestador')
-project_src_orquestador = os.path.join(project_root_orquestador, 'src')
+# chat_cli.py está en: poc/chatCLI/src/chat_cli.py
+# Project root es: agentes-con-LangGraph (3 niveles arriba de src)
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+orquestador_src = os.path.join(project_root, 'poc', 'agent-orquestador', 'src')
+agent_weather_src = os.path.join(project_root, 'poc', 'agent-weather', 'src')
 
 # Añadir paths del agente orquestador
-sys.path.insert(0, project_src_orquestador)
-sys.path.insert(0, project_root_orquestador)
-
-# Añadir path del agente meteorológico para los wrappers
-sys.path.insert(0, os.path.join(project_root, 'poc', 'agent-weather', 'src'))
+sys.path.insert(0, orquestador_src)
+sys.path.insert(0, os.path.join(orquestador_src, 'agents'))
+sys.path.insert(0, os.path.join(orquestador_src, 'schemas'))
+sys.path.insert(0, os.path.join(orquestador_src, 'services'))
+sys.path.insert(0, agent_weather_src)
+sys.path.insert(0, os.path.join(agent_weather_src, 'services'))
+sys.path.insert(0, os.path.join(agent_weather_src, 'schemas'))
 
 try:
-    from src.agents.orquestador_agent import run_orquestador
+    from orquestador_agent import run_orquestador
     ORQUESTADOR_AVAILABLE = True
     print("✅ Agente orquestador importado exitosamente")
 except ImportError as e:

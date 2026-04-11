@@ -1,61 +1,78 @@
 """
 Agente Orquestador con LangGraph
-Decide qué herramienta usar según la intención del usuario
+Decide qué herramienta usar según la intención del usuario usando LLM
 """
 
 from typing import TypedDict, Annotated, Sequence, Optional, Literal, Any
 from langgraph.graph import StateGraph, END
 from datetime import datetime
 import re
-
-# Importar wrappers
+import json
 import sys
 import os
+
+# Calcular rutas ANTES de cualquier importación
 current_dir = os.path.dirname(os.path.abspath(__file__))
 agent_orquestador_src = os.path.dirname(current_dir)  # poc/agent-orquestador/src
 project_root = os.path.dirname(os.path.dirname(agent_orquestador_src))  # agentes-con-LangGraph
 
-# Añadir paths necesarios
-sys.path.insert(0, agent_orquestador_src)
-sys.path.insert(0, project_root)
+# Añadir TODOS los paths necesarios ANTES de importar
+paths_to_add = [
+    agent_orquestador_src,
+    project_root,
+    os.path.join(project_root, 'poc', 'agent-weather', 'src'),
+    os.path.join(project_root, 'poc', 'agent-weather', 'src', 'agents'),
+    os.path.join(project_root, 'poc', 'agent-weather', 'src', 'services'),
+    os.path.join(project_root, 'poc', 'agent-weather', 'src', 'schemas'),
+    os.path.join(project_root, 'poc', 'agent-weather'),
+    os.path.join(project_root, 'lib'),
+    os.path.join(agent_orquestador_src, 'schemas'),
+    os.path.join(agent_orquestador_src, 'services'),
+]
 
-# Añadir path de agent-weather para los wrappers
-agent_weather_src = os.path.join(project_root, 'poc', 'agent-weather', 'src')
-sys.path.insert(0, agent_weather_src)
-sys.path.insert(0, os.path.join(agent_weather_src, 'agents'))
-
-# Añadir path de lib para MCP
-lib_path = os.path.join(project_root, 'lib')
-sys.path.insert(0, lib_path)
+for path in paths_to_add:
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 try:
     from src.schemas.orquestador import OrquestadorState, IntentAnalysis, ToolExecutionResult, ToolType
     from src.services.weather_agent_wrapper import execute_weather_agent, extract_location_from_text
     from src.services.mcp_wrapper import execute_mcp_tool, list_mcp_tools
 except ImportError as e:
-    print(f"⚠️  Error importando módulos: {e}")
     # Importar schemas directamente
-    sys.path.insert(0, os.path.join(agent_orquestador_src, 'schemas'))
-    sys.path.insert(0, os.path.join(agent_orquestador_src, 'services'))
     from orquestador import OrquestadorState, IntentAnalysis, ToolExecutionResult, ToolType
     from weather_agent_wrapper import execute_weather_agent, extract_location_from_text
     from mcp_wrapper import execute_mcp_tool, list_mcp_tools
 
 
 class AgentOrquestador:
-    """Clase principal del agente orquestador"""
+    """Clase principal del agente orquestador con LLM"""
     
     def __init__(self):
-        self.weather_keywords = [
-            'clima', 'weather', 'temperatura', ' temperatura', 'lluvia', 'rain',
-            'sol', 'sun', 'viento', 'wind', 'humedad', 'humidity', 'nieve', 'snow',
-            'nubes', 'clouds', 'amanecer', 'atardecer', 'predicción', 'forecast'
+        # Añadir paths del agente meteorológico para DeepSeek
+        agent_weather_root = os.path.join(project_root, 'poc', 'agent-weather')
+        agent_weather_src = os.path.join(agent_weather_root, 'src')
+        
+        paths_to_add = [
+            agent_weather_src,
+            os.path.join(agent_weather_src, 'services'),
+            os.path.join(agent_weather_src, 'schemas'),
+            agent_weather_root,
+            project_root,
         ]
         
-        self.mcp_keywords = [
-            'hola', 'hello', 'saludar', 'greet', 'idioma', 'language',
-            'herramienta', 'tool', 'mcp', 'servicio', 'service'
-        ]
+        for path in paths_to_add:
+            if path not in sys.path:
+                sys.path.insert(0, path)
+        
+        # Inicializar cliente DeepSeek
+        self.llm_available = False
+        try:
+            from deepseek_service import LLMProviderService
+            self.llm = LLMProviderService()
+            self.llm_available = True
+        except Exception as e:
+            print(f"⚠️  DeepSeek no disponible ({e}), usando análisis por reglas")
         
         # Listar herramientas MCP disponibles
         try:
@@ -64,10 +81,24 @@ class AgentOrquestador:
         except:
             self.mcp_tools = []
             self.mcp_tool_names = ['say_hello', 'get_hello_languages']
+        
+        # Definir palabras clave
+        self.weather_keywords = [
+            'clima', 'weather', 'temperatura', ' temperatura', 'lluvia', 'rain',
+            'sol', 'sun', 'viento', 'wind', 'humedad', 'humidity', 'nieve', 'snow',
+            'nubes', 'clouds', 'amanecer', 'atardecer', 'predicción', 'forecast',
+            'tiempo', 'hace', 'hoy', 'mañana'
+        ]
+        
+        self.mcp_keywords = [
+            'hola', 'hello', 'saludar', 'greet', 'idioma', 'language',
+            'herramienta', 'tool', 'mcp', 'servicio', 'service',
+            'saluda', 'decir', 'hablar'
+        ]
     
-    def analyze_intent(self, user_input: str, history: Sequence[dict[str, str]]) -> IntentAnalysis:
+    def analyze_intent_with_llm(self, user_input: str, history: Sequence[dict[str, str]]) -> IntentAnalysis:
         """
-        Analiza la intención del usuario
+        Analiza la intención del usuario usando LLM
         
         Args:
             user_input: Mensaje del usuario
@@ -76,10 +107,132 @@ class AgentOrquestador:
         Returns:
             Análisis de intención
         """
+        if not self.llm_available:
+            return self.analyze_intent_by_rules(user_input, history)
+        
+        # Construir mensajes para el LLM
+        messages = []
+        
+        # Añadir historial
+        for msg in history[-5:]:
+            messages.append({
+                "role": msg.get("role", "user"),
+                "content": msg.get("content", "")
+            })
+        
+        # Añadir instrucciones del sistema
+        available_tools = "\n".join([f"- {tool}" for tool in self.mcp_tool_names])
+        
+        system_prompt = f"""Eres un asistente inteligente que analiza la intención del usuario y decide qué herramienta usar.
+
+HERRAMIENTAS DISPONIBLES:
+- Agente Meteorológico: Para consultas de clima
+{available_tools}
+- Chat Genérico: Para conversación general
+
+INSTRUCCIONES:
+1. Identifica la intención del usuario
+2. Determina qué herramienta usar: "weather", "mcp", o "chat"
+3. Si es "mcp", especifica el nombre de la herramienta
+4. Extrae argumentos relevantes (como ubicación para clima, nombre para saludos, etc.)
+5. Devuelve un JSON con la siguiente estructura:
+{{
+  "intent": "string describing the intent",
+  "tool_type": "weather" | "mcp" | "chat",
+  "tool_name": "nombre de la herramienta MCP (solo si tool_type es mcp)",
+  "arguments": {{"key": "value"}},
+  "confidence": 0.0-1.0
+}}
+
+EJEMPLOS:
+Usuario: "¿Cómo está el clima en Madrid?"
+{{
+  "intent": "weather_query",
+  "tool_type": "weather",
+  "arguments": {{"location": "Madrid"}},
+  "confidence": 0.95
+}}
+
+Usuario: "say_hello(name=Juan, lang=es)"
+{{
+  "intent": "mcp_say_hello",
+  "tool_type": "mcp",
+  "tool_name": "say_hello",
+  "arguments": {{"name": "Juan", "lang": "es"}},
+  "confidence": 0.98
+}}
+
+Usuario: "Hola, ¿cómo estás?"
+{{
+  "intent": "general_chat",
+  "tool_type": "chat",
+  "arguments": {{}},
+  "confidence": 0.8
+}}
+
+Devuelve solo el JSON, sin texto adicional:
+"""
+        
+        messages.insert(0, {"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_input})
+        
+        try:
+            response = self.llm.chat(messages)
+            
+            # Parsear respuesta JSON
+            json_match = re.search(r'\{.*\}', response, re.DOTALL)
+            if json_match:
+                result = json.loads(json_match.group())
+                
+                # Asegurar que tool_name esté en arguments para herramientas MCP
+                arguments = result.get("arguments", {})
+                if result.get("tool_type") == "mcp" and "tool_name" not in arguments:
+                    # Extraer tool_name del intent o usar el nombre de la herramienta
+                    intent_name = result.get("intent", "")
+                    if intent_name.startswith("mcp_"):
+                        arguments["tool_name"] = intent_name[4:]
+                
+                return {
+                    "intent": result.get("intent", "general_chat"),
+                    "confidence": result.get("confidence", 0.7),
+                    "tool_type": result.get("tool_type", "chat"),
+                    "arguments": arguments
+                }
+        except Exception as e:
+            print(f"⚠️  Error con LLM, usando análisis por reglas: {e}")
+        
+        return self.analyze_intent_by_rules(user_input, history)
+    
+    def analyze_intent_by_rules(self, user_input: str, history: Sequence[dict[str, str]]) -> IntentAnalysis:
+        """
+        Analiza la intención del usuario usando reglas (fallback del LLM)
+        
+        Args:
+            user_input: Mensaje del usuario
+            history: Historial de conversación
+        
+        Returns:
+            Análisis de intención
+        """
+        # Palabras clave para clima
+        weather_keywords = [
+            'clima', 'weather', 'temperatura', ' temperatura', 'lluvia', 'rain',
+            'sol', 'sun', 'viento', 'wind', 'humedad', 'humidity', 'nieve', 'snow',
+            'nubes', 'clouds', 'amanecer', 'atardecer', 'predicción', 'forecast',
+            'tiempo', 'hace', 'hoy', 'mañana'
+        ]
+        
+        # Palabras clave para MCP
+        mcp_keywords = [
+            'hola', 'hello', 'saludar', 'greet', 'idioma', 'language',
+            'herramienta', 'tool', 'mcp', 'servicio', 'service',
+            'saluda', 'decir', 'hablar'
+        ]
+        
         user_input_lower = user_input.lower()
         
         # Verificar si es consulta de clima
-        weather_match = any(keyword in user_input_lower for keyword in self.weather_keywords)
+        weather_match = any(keyword in user_input_lower for keyword in weather_keywords)
         
         # Verificar si es comando MCP
         mcp_match = any(keyword in user_input_lower for keyword in self.mcp_keywords)
@@ -96,7 +249,6 @@ class AgentOrquestador:
             if not location and history:
                 for msg in reversed(history):
                     if 'vive en' in msg.get('content', '').lower():
-                        # Extraer ubicación de "vive en X"
                         match = re.search(r'vive en\s+(\w+)', msg['content'].lower())
                         if match:
                             location = match.group(1).title()
@@ -154,15 +306,18 @@ class AgentOrquestador:
                 "arguments": {}
             }
     
+    def analyze_intent(self, user_input: str, history: Sequence[dict[str, str]]) -> IntentAnalysis:
+        """
+        Analiza la intención del usuario (con LLM si está disponible)
+        """
+        if self.llm_available:
+            return self.analyze_intent_with_llm(user_input, history)
+        else:
+            return self.analyze_intent_by_rules(user_input, history)
+    
     def execute_tool(self, intent: IntentAnalysis) -> ToolExecutionResult:
         """
         Ejecuta la herramienta determinada por el análisis de intención
-        
-        Args:
-            intent: Análisis de intención
-        
-        Returns:
-            Resultado de la ejecución
         """
         tool_type = intent['tool_type']
         
@@ -233,7 +388,7 @@ class AgentOrquestador:
                 }
         
         else:
-            # Chat genérico (por ahora, respuesta simple)
+            # Chat genérico con LLM
             return {
                 "success": True,
                 "tool_used": "chat",

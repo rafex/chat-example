@@ -62,11 +62,27 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
             content = response['result']['content'][0]['text']
             result_data = json.loads(content)
             
+            # Extraer mensaje de la respuesta
+            response_text = ""
+            if isinstance(result_data, dict):
+                # Para herramientas como say_hello
+                if 'message' in result_data:
+                    response_text = result_data['message']
+                # Para herramientas como get_hello_languages
+                elif 'count' in result_data and 'languages' in result_data:
+                    languages = result_data['languages']
+                    count = result_data['count']
+                    response_text = f"Language tool available! Supports {count} languages: {', '.join(languages)}"
+                else:
+                    response_text = str(result_data)
+            else:
+                response_text = str(result_data)
+            
             return {
                 "success": True,
                 "tool_used": tool_name,
                 "tool_args": arguments,
-                "response": result_data.get('message', result_data),
+                "response": response_text,
                 "raw_response": result_data
             }
         else:
