@@ -26,8 +26,31 @@ sys.path.insert(0, lib_path)
 
 # Importar desde poc/agent-weather
 from src.schemas.chat import ChatSession, MessageType, Message
-from src.agents.weather_agent import run_weather_agent
 from src.services.generic_chat_service import GenericChatService  # Mantener como fallback
+
+# Importar agente orquestador
+project_root_orquestador = os.path.join(project_root, 'poc', 'agent-orquestador')
+project_src_orquestador = os.path.join(project_root_orquestador, 'src')
+
+# Añadir paths del agente orquestador
+sys.path.insert(0, project_src_orquestador)
+sys.path.insert(0, project_root_orquestador)
+
+# Añadir path del agente meteorológico para los wrappers
+sys.path.insert(0, os.path.join(project_root, 'poc', 'agent-weather', 'src'))
+
+try:
+    from src.agents.orquestador_agent import run_orquestador
+    ORQUESTADOR_AVAILABLE = True
+    print("✅ Agente orquestador importado exitosamente")
+except ImportError as e:
+    ORQUESTADOR_AVAILABLE = False
+    print(f"⚠️  Agente orquestador no disponible: {e}")
+    try:
+        from src.agents.weather_agent import run_weather_agent
+        print("✅ Usando agente meteorológico directo")
+    except ImportError as e2:
+        print(f"❌ Error importando agente meteorológico: {e2}")
 
 # Importar MCP Router
 from mcp.router import MCPRouter
@@ -321,72 +344,27 @@ def main():
                     context_text = "\n".join([f"- {r['text']}" for r in context_results])
                     print(f"\n🧠 Contexto recuperado de la memoria:\n{context_text}")
 
-                # Detectar si el usuario pregunta por el clima
-                weather_keywords = ['clima', 'weather', 'temperatura', ' temperatura', 'lluvia', 'rain', 'sol', 'sun', 'viento', 'wind', 'humedad', 'humidity']
-                is_weather_query = any(keyword in user_input.lower() for keyword in weather_keywords)
-                
-                response_text = ""
-                
-                if is_weather_query:
-                    # Extraer ubicación del mensaje
-                    location = None
-                    
-                    # Patrones comunes para extraer ubicación
-                    patterns = [
-                        r'en\s+(\w+(?:\s+\w+)*?)\s*(?:\?|\.|$|,)',
-                        r'en\s+(\w+(?:\s+\w+)*?)\s*$',
-                        r'(\bMadrid\b|\bBarcelona\b|\bValencia\b|\bSevilla\b|\bBilbao\b|\bZaragoza\b|\bPalma\b|\bMurcia\b|\bGranada\b|\bAlicante\b)',
-                    ]
-                    
-                    for pattern in patterns:
-                        match = re.search(pattern, user_input, re.IGNORECASE)
-                        if match:
-                            location = match.group(1)
-                            break
-                    
-                    # Si no se encontró ubicación, usar ubicación por defecto o pedir al usuario
-                    if not location:
-                        # Intentar extraer ubicación de la memoria de contexto
-                        for result in context_results:
-                            if 'Madrid' in result['text'] or 'Barcelona' in result['text']:
-                                # Extraer ubicación del contexto
-                                for city in ['Madrid', 'Barcelona', 'Valencia', 'Sevilla', 'Bilbao', 'Zaragoza', 'Palma', 'Murcia', 'Granada', 'Alicante']:
-                                    if city in result['text']:
-                                        location = city
-                                        break
-                            if location:
-                                break
-                    
-                    if location:
-                        print(f"\n🌤️ Consultando clima para: {location}")
-                        try:
-                            # Usar el agente meteorológico
-                            weather_result = run_weather_agent(location)
-                            
-                            if weather_result['success']:
-                                analysis = weather_result['analysis']
-                                recommendations = weather_result['recommendations']
-                                
-                                # Construir respuesta
-                                response_text = f"🌞 Clima en {analysis['location']}:\n"
-                                response_text += f"   - Temperatura: {analysis['temperature_celsius']}°C ({analysis['temperature']}°F)\n"
-                                response_text += f"   - Condición: {analysis['condition']}\n"
-                                response_text += f"   - Humedad: {analysis['humidity']}%\n"
-                                response_text += f"   - Viento: {analysis['wind_speed']} m/s\n\n"
-                                response_text += "💡 Recomendaciones:\n"
-                                for rec in recommendations:
-                                    response_text += f"   - {rec}\n"
-                                
-                                print(f"\n🌤️ Datos del agente meteorológico:")
-                                print(response_text)
-                            else:
-                                response_text = f"❌ No pude obtener el clima para {location}. Error: {weather_result.get('error', 'Desconocido')}"
-                        except Exception as e:
-                            response_text = f"❌ Error al consultar el clima: {str(e)}"
-                            print(f"\n⚠️ Usando servicio de chat como fallback: {e}")
-                    else:
-                        # No se encontró ubicación, usar chat genérico
-                        print(f"\n⚠️ No se detectó ubicación en el mensaje, usando chat genérico")
+                # Usar agente orquestador si está disponible
+                if ORQUESTADOR_AVAILABLE:
+                    try:
+                        # Preparar historial para el agente orquestador
+                        conversation_history = [
+                            {"role": msg.type.value, "content": msg.content}
+                            for msg in chat_session.messages
+                        ]
+                        
+                        # Ejecutar agente orquestador
+                        orquestador_result = run_orquestador(user_input, conversation_history)
+                        
+                        if orquestador_result['success']:
+                            response_text = orquestador_result['response']
+                            print(f"\n🧠 Agente orquestador: {orquestador_result['tool_used']} -> {orquestador_result['intent']}")
+                        else:
+                            response_text = orquestador_result['response']
+                            print(f"\n⚠️ Error en agente orquestador, usando fallback: {orquestador_result.get('error')}")
+                    except Exception as e:
+                        print(f"\n⚠️ Error ejecutando agente orquestador: {e}")
+                        # Fallback a chat genérico
                         conversation_history = [
                             {"role": msg.type.value, "content": msg.content}
                             for msg in chat_session.messages
@@ -395,14 +373,68 @@ def main():
                         result_chat = chat_service.chat(user_input, conversation_history)
                         response_text = result_chat['response']
                 else:
-                    # No es consulta de clima, usar chat genérico
-                    conversation_history = [
-                        {"role": msg.type.value, "content": msg.content}
-                        for msg in chat_session.messages
-                    ]
-                    conversation_history.append({"role": "user", "content": user_input})
-                    result_chat = chat_service.chat(user_input, conversation_history)
-                    response_text = result_chat['response']
+                    # Fallback: usar lógica anterior
+                    weather_keywords = ['clima', 'weather', 'temperatura', ' temperatura', 'lluvia', 'rain', 'sol', 'sun', 'viento', 'wind', 'humedad', 'humidity']
+                    is_weather_query = any(keyword in user_input.lower() for keyword in weather_keywords)
+                    
+                    if is_weather_query:
+                        # Extraer ubicación del mensaje
+                        location = None
+                        
+                        # Patrones comunes para extraer ubicación
+                        patterns = [
+                            r'en\s+(\w+(?:\s+\w+)*?)\s*(?:\?|\.|$|,)',
+                            r'en\s+(\w+(?:\s+\w+)*?)\s*$',
+                            r'(\bMadrid\b|\bBarcelona\b|\bValencia\b|\bSevilla\b|\bBilbao\b|\bZaragoza\b|\bPalma\b|\bMurcia\b|\bGranada\b|\bAlicante\b)',
+                        ]
+                        
+                        for pattern in patterns:
+                            match = re.search(pattern, user_input, re.IGNORECASE)
+                            if match:
+                                location = match.group(1)
+                                break
+                        
+                        if location:
+                            print(f"\n🌤️ Consultando clima para: {location}")
+                            try:
+                                # Usar el agente meteorológico
+                                weather_result = run_weather_agent(location)
+                                
+                                if weather_result['success']:
+                                    analysis = weather_result['analysis']
+                                    recommendations = weather_result['recommendations']
+                                    
+                                    # Construir respuesta
+                                    response_text = f"🌞 Clima en {analysis['location']}:\n"
+                                    response_text += f"   - Temperatura: {analysis['temperature_celsius']}°C ({analysis['temperature']}°F)\n"
+                                    response_text += f"   - Condición: {analysis['condition']}\n"
+                                    response_text += f"   - Humedad: {analysis['humidity']}%\n"
+                                    response_text += f"   - Viento: {analysis['wind_speed']} m/s\n\n"
+                                    response_text += "💡 Recomendaciones:\n"
+                                    for rec in recommendations:
+                                        response_text += f"   - {rec}\n"
+                                else:
+                                    response_text = f"❌ No pude obtener el clima para {location}. Error: {weather_result.get('error', 'Desconocido')}"
+                            except Exception as e:
+                                response_text = f"❌ Error al consultar el clima: {str(e)}"
+                        else:
+                            # No se encontró ubicación, usar chat genérico
+                            conversation_history = [
+                                {"role": msg.type.value, "content": msg.content}
+                                for msg in chat_session.messages
+                            ]
+                            conversation_history.append({"role": "user", "content": user_input})
+                            result_chat = chat_service.chat(user_input, conversation_history)
+                            response_text = result_chat['response']
+                    else:
+                        # No es consulta de clima, usar chat genérico
+                        conversation_history = [
+                            {"role": msg.type.value, "content": msg.content}
+                            for msg in chat_session.messages
+                        ]
+                        conversation_history.append({"role": "user", "content": user_input})
+                        result_chat = chat_service.chat(user_input, conversation_history)
+                        response_text = result_chat['response']
 
                 # Crear mensaje del asistente
                 assistant_msg = Message(
