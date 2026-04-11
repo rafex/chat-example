@@ -78,18 +78,17 @@ class GenericChatService:
     def _init_mcp_servers(self):
         """Inicializa los servidores MCP"""
         try:
-            # Importar directamente el servicio de hello para simplificar
-            import sys
-            sys.path.insert(0, "/Users/rafex/repository/github/rafex/mcp-example/mcp/hello/python")
-            from hello_service import build_hello_payload, get_supported_languages
+            from src.services.mcp_service import HelloMCPServer
             
-            self.mcp_servers["hello"] = {
-                "build_hello_payload": build_hello_payload,
-                "get_supported_languages": get_supported_languages
-            }
-            print(f"✅ Servicio 'hello' cargado (MCP)")
+            # Inicializar el servidor MCP de saludos
+            hello_server = HelloMCPServer()
+            if hello_server.start():
+                self.mcp_servers["hello"] = hello_server
+                print(f"✅ Servidor MCP 'hello' iniciado")
+            else:
+                print(f"⚠️ No se pudo iniciar el servidor MCP 'hello'")
         except Exception as e:
-            print(f"⚠️  Error cargando servicio hello: {e}")
+            print(f"⚠️  Error inicializando servidores MCP: {e}")
 
     def get_system_prompt(self) -> str:
         """Prompt del sistema para el asistente"""
@@ -129,14 +128,36 @@ HERRAMIENTAS DISPONIBLES:
             'marhaban', 'nomoskar', 'ola', 'privet', 'assalam'
         ]
         
+        # Mapeo de palabras de saludo a idiomas
+        hello_lang_map = {
+            'hola': 'es',
+            'hello': 'en',
+            'bonjour': 'fr',
+            'ni hao': 'zh',
+            'namaste': 'hi',
+            'marhaban': 'ar',
+            'nomoskar': 'bn',
+            'ola': 'pt',
+            'privet': 'ru',
+            'assalam': 'ar',
+        }
+        
         # Si el mensaje contiene palabras de saludo y/o pide un saludo
         if any(pattern in message_lower for pattern in hello_patterns):
             # Intentar extraer nombre y idioma
             name = self.extract_name(message)
             lang = self.extract_language(message)
             
-            # Si hay mención de nombre o idioma, usar herramienta say_hello
-            if name or lang or any(pattern in message_lower for pattern in ['saluda', 'greet', 'di hola']):
+            # Si no se detectó idioma pero hay una palabra de saludo, usar el idioma de esa palabra
+            if not lang:
+                for pattern in hello_patterns:
+                    if pattern in message_lower:
+                        lang = hello_lang_map.get(pattern)
+                        break
+            
+            # Si hay mención de nombre o idioma, o si el mensaje es solo un saludo, usar herramienta say_hello
+            if name or lang or any(pattern in message_lower for pattern in ['saluda', 'greet', 'di hola']) or \
+               any(pattern in message_lower for pattern in hello_patterns):
                 return "say_hello", {"name": name, "lang": lang}
 
         # 2. Detectar herramienta de clima
@@ -232,25 +253,29 @@ HERRAMIENTAS DISPONIBLES:
 
     def extract_language(self, message: str) -> Optional[str]:
         """Extrae el idioma del mensaje"""
+        import re
         message_lower = message.lower()
         
-        # Mapeo de idiomas
+        # Mapeo de idiomas soportados por el backend API
         lang_map = {
-            'en': ['english', 'inglés', 'en', 'ingles'],
-            'es': ['español', 'espanol', 'spanish', 'es'],
-            'fr': ['francés', 'frances', 'french', 'fr'],
-            'zh': ['chino', 'chinese', 'zh'],
-            'hi': ['hindi', 'hindú', 'hi'],
-            'ar': ['árabe', 'arabe', 'arabic', 'ar'],
-            'bn': ['bengalí', 'bengali', 'bn'],
-            'pt': ['portugués', 'portugues', 'portuguese', 'pt'],
-            'ru': ['ruso', 'russian', 'ru'],
-            'ur': ['urdu', 'ur'],
+            'en': ['english', 'inglés', 'ingles'],
+            'es': ['español', 'espanol', 'spanish'],
+            'fr': ['francés', 'frances', 'french'],
+            'zh': ['chino', 'chinese'],
+            'hi': ['hindi', 'hindú'],
+            'ar': ['árabe', 'arabe', 'arabic'],
+            'bn': ['bengalí', 'bengali'],
+            'pt': ['portugués', 'portugues', 'portuguese'],
+            'ru': ['ruso', 'russian'],
+            'ur': ['urdu'],
         }
         
+        # Buscar palabras completas usando regex
         for lang_code, lang_names in lang_map.items():
             for lang_name in lang_names:
-                if lang_name in message_lower:
+                # Usar regex para buscar palabras completas
+                pattern = r'\b' + re.escape(lang_name) + r'\b'
+                if re.search(pattern, message_lower):
                     return lang_code
         
         return None
@@ -293,11 +318,11 @@ HERRAMIENTAS DISPONIBLES:
             lang = tool_args.get("lang")
             
             # Usar servidor MCP si está disponible
-            if "hello" in self.mcp_servers:
+            if "hello" in self.mcp_servers and self.mcp_servers["hello"]:
                 try:
                     result = self.mcp_servers["hello"].say_hello(name=name, lang=lang)
                     if result and result.get("message"):
-                        return f"👋 {result['message']} (idioma: {result.get('lang', 'en')})"
+                        return f"👋 {result['message']}"
                 except Exception as e:
                     print(f"⚠️ Error usando MCP hello: {e}")
             

@@ -12,7 +12,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 from src.schemas.chat import ChatSession, MessageType, Message
-from src.services.weather_chat_agent import WeatherChatAgent
+from src.services.generic_chat_service import GenericChatService
 
 
 def clear_screen():
@@ -58,7 +58,7 @@ def main():
         # Inicializar sesión y agente
         session_id = str(uuid.uuid4())[:8]
         chat_session = ChatSession(id=session_id)
-        agent = WeatherChatAgent()
+        agent = GenericChatService()
 
         print(f"\n💡 Sesión iniciada: {session_id}")
         print("💡 Escribe 'salir' o 'exit' para terminar")
@@ -68,11 +68,11 @@ def main():
         # Mensaje de bienvenida del asistente
         welcome_msg = Message(
             type=MessageType.ASSISTANT,
-            content="👋 ¡Hola! Soy tu asistente meteorológico.\n"
-                    "Pregúntame sobre el clima de cualquier ciudad, por ejemplo:\n"
+            content="👋 ¡Hola! Soy tu asistente conversacional.\n"
+                    "Puedes preguntarme sobre el clima de cualquier ciudad, o saludarme en diferentes idiomas.\n"
                     "• '¿Cómo está el clima en Madrid?'\n"
-                    "• '¿Qué tiempo hace en Barcelona?'\n"
-                    "• 'Temperatura en Londres'\n\n"
+                    "• 'Di hola en francés'\n"
+                    "• 'Saluda a Juan en español'\n\n"
                     "Escribe 'ayuda' para más información."
         )
         chat_session.add_message(welcome_msg.type, welcome_msg.content)
@@ -110,11 +110,31 @@ def main():
                     continue
 
                 # Procesar mensaje con el agente
-                response = agent.process_message(user_input)
+                # Convertir mensajes a formato de diccionario para GenericChatService
+                conversation_history = []
+                for msg in chat_session.messages:
+                    conversation_history.append({
+                        "role": "user" if msg.type == MessageType.USER else "assistant",
+                        "content": msg.content
+                    })
+                
+                result = agent.chat(user_input, conversation_history)
+
+                # Extraer respuesta del resultado
+                if result.get('response'):
+                    response_content = result['response']
+                else:
+                    response_content = "No pude procesar tu mensaje."
+
+                # Crear mensaje de respuesta
+                response = Message(
+                    type=MessageType.ASSISTANT,
+                    content=response_content
+                )
 
                 # Guardar en el historial
                 chat_session.add_message(MessageType.USER, user_input)
-                chat_session.add_message(response.type, response.content, response.data)
+                chat_session.add_message(response.type, response.content)
 
                 # Mostrar respuesta
                 print(format_message(response))

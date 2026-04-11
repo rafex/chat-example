@@ -235,3 +235,12 @@ class HelloMCPServer(MCPServer):
         """Obtiene los idiomas soportados"""
         result = self.call_tool("get_hello_languages", {})
         return result
+    
+    def get_supported_languages_list(self) -> List[str]:
+        """Obtiene la lista de códigos de idiomas soportados"""
+        result = self.get_languages()
+        if result and "structuredContent" in result:
+            content = result["structuredContent"]
+            if "languages" in content:
+                return content["languages"]
+        return ["en", "es", "fr", "zh", "hi", "ar", "bn", "pt", "ru", "ur"]  # Fallback

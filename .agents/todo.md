@@ -67,7 +67,9 @@
 ### Inmediatas (24-48h)
 - [x] **Esperar activación de OpenWeatherMap** (2h desde email recibido) - **COMPLETADO**
 - [x] **Probar chat CLI con API real** después de activación - **COMPLETADO**
-- [ ] **Verificar límites de cuota** de ambas APIs (pendiente)
+- [x] **Integrar MCP para saludos** - **COMPLETADO**
+- [x] **Mejorar portabilidad de servicios** - **COMPLETADO**
+- [ ] **Verificar límites de cuota** de ambas APIs (pendiente para futuro)
 
 ### Opcionales (Mejoras futuras)
 - [ ] **Añadir persistencia** de historial de conversaciones
