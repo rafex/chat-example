@@ -1,13 +1,14 @@
-# Agente Meteorológico con LangGraph
+# Agente Meteorológico con LangGraph + DeepSeek
 
-Un agente inteligente que consume la API de OpenWeatherMap para proporcionar información climática y recomendaciones personalizadas.
+Un agente inteligente que consume la API de OpenWeatherMap y utiliza **DeepSeek** (LLM) para generar recomendaciones meteorológicas naturales y personalizadas.
 
 ## Características
 
 - **Consumo de API**: Cliente HTTP para la API pública de OpenWeatherMap
 - **Análisis de clima**: Procesamiento de datos meteorológicos (temperatura, humedad, viento)
-- **Recomendaciones**: Generación de consejos basados en condiciones climáticas
+- **Integración LLM**: DeepSeek para generar recomendaciones conversacionales
 - **Flujo LangGraph**: Orquestación del agente usando grafos de estado
+- **Fallback inteligente**: Recomendaciones básicas si el LLM falla
 
 ## Estructura del Proyecto
 
@@ -80,10 +81,12 @@ python3 -c "from src.agents.weather_agent import run_weather_agent; print(run_we
 ## Tecnologías
 
 - **LangGraph**: Orquestación de grafos de estado para el agente
+- **DeepSeek**: LLM open source para generación de recomendaciones conversacionales
 - **Pydantic**: Validación y modelos de datos
-- **Requests**: Cliente HTTP
+- **Requests**: Cliente HTTP para OpenWeatherMap
 - **Python-dotenv**: Gestión de variables de entorno
 - **pytest**: Framework de pruebas
+- **OpenAI SDK**: Cliente para APIs compatibles (usado con DeepSeek)
 
 ## Tests
 

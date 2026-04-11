@@ -1,6 +1,7 @@
 from typing import TypedDict, Annotated, Sequence, Optional
 from langgraph.graph import StateGraph, END
 from src.services.weather_service import WeatherService
+from src.services.deepseek_service import DeepSeekService
 from src.schemas.weather import WeatherData, AnalysisResult
 from datetime import datetime
 
@@ -24,7 +25,7 @@ def fetch_weather(state: AgentState) -> AgentState:
         return {**state, "weather_data": None, "error": str(e)}
 
 def analyze_weather(state: AgentState) -> AgentState:
-    """Nodo: Analizar datos climáticos y generar recomendaciones"""
+    """Nodo: Analizar datos climáticos y generar recomendaciones con DeepSeek"""
     weather_data = state.get("weather_data")
     if not weather_data:
         return {**state, "analysis": None, "recommendations": ["No se pudieron obtener datos climáticos"]}
@@ -33,8 +34,24 @@ def analyze_weather(state: AgentState) -> AgentState:
     temp_celsius = weather_data.to_celsius()
     condition = weather_data.get_weather_summary()
 
-    # Generar recomendaciones basadas en el clima
-    recommendations = generate_recommendations(weather_data)
+    # Preparar datos para DeepSeek
+    weather_info = {
+        "location": weather_data.name,
+        "temperature_celsius": temp_celsius,
+        "condition": condition,
+        "humidity": weather_data.main.humidity,
+        "wind_speed": weather_data.wind.speed
+    }
+
+    # Generar recomendaciones usando DeepSeek
+    try:
+        deepseek_service = DeepSeekService()
+        llm_recommendations = deepseek_service.generate_recommendations(weather_info)
+        recommendations = [llm_recommendations]
+    except Exception as e:
+        print(f"Error con DeepSeek, usando recomendaciones básicas: {e}")
+        # Fallback a recomendaciones básicas si DeepSeek falla
+        recommendations = generate_recommendations(weather_data)
 
     analysis = AnalysisResult(
         location=weather_data.name,
