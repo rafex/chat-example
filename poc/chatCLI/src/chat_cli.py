@@ -26,7 +26,8 @@ sys.path.insert(0, lib_path)
 
 # Importar desde poc/agent-weather
 from src.schemas.chat import ChatSession, MessageType, Message
-from src.services.generic_chat_service import GenericChatService
+from src.agents.weather_agent import run_weather_agent
+from src.services.generic_chat_service import GenericChatService  # Mantener como fallback
 
 # Importar MCP Router
 from mcp.router import MCPRouter
@@ -320,33 +321,101 @@ def main():
                     context_text = "\n".join([f"- {r['text']}" for r in context_results])
                     print(f"\n🧠 Contexto recuperado de la memoria:\n{context_text}")
 
-                # Preparar historial para el servicio de chat (incluyendo mensaje actual)
-                conversation_history = [
-                    {"role": msg.type.value, "content": msg.content}
-                    for msg in chat_session.messages
-                ]
-                # Agregar mensaje actual al historial para detección de nombre
-                conversation_history.append({"role": "user", "content": user_input})
-
-                # Procesar mensaje con el servicio de chat
-                result = chat_service.chat(user_input, conversation_history)
-
-                # Mostrar indicador si se usó una herramienta
-                if result.get('tool_used'):
-                    print(f"\n🔧 Usando herramienta: {result['tool_used']} con {result['tool_args']}")
+                # Detectar si el usuario pregunta por el clima
+                weather_keywords = ['clima', 'weather', 'temperatura', ' temperatura', 'lluvia', 'rain', 'sol', 'sun', 'viento', 'wind', 'humedad', 'humidity']
+                is_weather_query = any(keyword in user_input.lower() for keyword in weather_keywords)
+                
+                response_text = ""
+                
+                if is_weather_query:
+                    # Extraer ubicación del mensaje
+                    location = None
+                    
+                    # Patrones comunes para extraer ubicación
+                    patterns = [
+                        r'en\s+(\w+(?:\s+\w+)*?)\s*(?:\?|\.|$|,)',
+                        r'en\s+(\w+(?:\s+\w+)*?)\s*$',
+                        r'(\bMadrid\b|\bBarcelona\b|\bValencia\b|\bSevilla\b|\bBilbao\b|\bZaragoza\b|\bPalma\b|\bMurcia\b|\bGranada\b|\bAlicante\b)',
+                    ]
+                    
+                    for pattern in patterns:
+                        match = re.search(pattern, user_input, re.IGNORECASE)
+                        if match:
+                            location = match.group(1)
+                            break
+                    
+                    # Si no se encontró ubicación, usar ubicación por defecto o pedir al usuario
+                    if not location:
+                        # Intentar extraer ubicación de la memoria de contexto
+                        for result in context_results:
+                            if 'Madrid' in result['text'] or 'Barcelona' in result['text']:
+                                # Extraer ubicación del contexto
+                                for city in ['Madrid', 'Barcelona', 'Valencia', 'Sevilla', 'Bilbao', 'Zaragoza', 'Palma', 'Murcia', 'Granada', 'Alicante']:
+                                    if city in result['text']:
+                                        location = city
+                                        break
+                            if location:
+                                break
+                    
+                    if location:
+                        print(f"\n🌤️ Consultando clima para: {location}")
+                        try:
+                            # Usar el agente meteorológico
+                            weather_result = run_weather_agent(location)
+                            
+                            if weather_result['success']:
+                                analysis = weather_result['analysis']
+                                recommendations = weather_result['recommendations']
+                                
+                                # Construir respuesta
+                                response_text = f"🌞 Clima en {analysis['location']}:\n"
+                                response_text += f"   - Temperatura: {analysis['temperature_celsius']}°C ({analysis['temperature']}°F)\n"
+                                response_text += f"   - Condición: {analysis['condition']}\n"
+                                response_text += f"   - Humedad: {analysis['humidity']}%\n"
+                                response_text += f"   - Viento: {analysis['wind_speed']} m/s\n\n"
+                                response_text += "💡 Recomendaciones:\n"
+                                for rec in recommendations:
+                                    response_text += f"   - {rec}\n"
+                                
+                                print(f"\n🌤️ Datos del agente meteorológico:")
+                                print(response_text)
+                            else:
+                                response_text = f"❌ No pude obtener el clima para {location}. Error: {weather_result.get('error', 'Desconocido')}"
+                        except Exception as e:
+                            response_text = f"❌ Error al consultar el clima: {str(e)}"
+                            print(f"\n⚠️ Usando servicio de chat como fallback: {e}")
+                    else:
+                        # No se encontró ubicación, usar chat genérico
+                        print(f"\n⚠️ No se detectó ubicación en el mensaje, usando chat genérico")
+                        conversation_history = [
+                            {"role": msg.type.value, "content": msg.content}
+                            for msg in chat_session.messages
+                        ]
+                        conversation_history.append({"role": "user", "content": user_input})
+                        result_chat = chat_service.chat(user_input, conversation_history)
+                        response_text = result_chat['response']
+                else:
+                    # No es consulta de clima, usar chat genérico
+                    conversation_history = [
+                        {"role": msg.type.value, "content": msg.content}
+                        for msg in chat_session.messages
+                    ]
+                    conversation_history.append({"role": "user", "content": user_input})
+                    result_chat = chat_service.chat(user_input, conversation_history)
+                    response_text = result_chat['response']
 
                 # Crear mensaje del asistente
                 assistant_msg = Message(
                     type=MessageType.ASSISTANT,
-                    content=result['response']
+                    content=response_text
                 )
 
                 # Guardar en el historial
                 chat_session.add_message(MessageType.USER, user_input)
-                chat_session.add_message(assistant_msg.type, assistant_msg.content, result)
+                chat_session.add_message(assistant_msg.type, assistant_msg.content)
 
                 # Agregar respuesta del asistente a la memoria
-                memory.add_message(result['response'], 'assistant')
+                memory.add_message(response_text, 'assistant')
 
                 # Mostrar respuesta
                 print(format_message(assistant_msg))
