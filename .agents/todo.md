@@ -61,7 +61,7 @@
 | Justfile | ✅ Actualizado | Comandos de chat añadidos |
 | OpenWeatherMap | ✅ Activa | API funcionando correctamente |
 | DeepSeek API | ✅ Configurada | Lista para uso |
-| Chat Genérico | ✅ Completo | Con soporte MCP para saludos (poc/chatCLI/) |
+| Chat Genérico | ✅ Completo | Con soporte MCP y memoria FAISS (poc/chatCLI/) |
 
 ## ✅ TAREAS PENDIENTES COMPLETADAS
 
