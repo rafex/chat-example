@@ -29,7 +29,7 @@ class MemoryManager:
     """Gestor de memoria temporal usando FAISS con vectores TF-IDF manuales"""
     
     def __init__(self):
-        self.dimension = 1000  # Tamaño del vocabulario (palabras más frecuentes)
+        self.dimension = 256  # Dimensión reducida para eficiencia
         
         # Crear índice FAISS en memoria (no se guarda en disco)
         self.index = faiss.IndexFlatL2(self.dimension)
@@ -49,7 +49,7 @@ class MemoryManager:
         # Contador de palabras para construir vocabulario
         self.word_counter = Counter()
         
-        print("🧠 Memoria temporal inicializada con FAISS (TF-IDF manual)")
+        print("🧠 Memoria temporal inicializada con FAISS (TF-IDF manual, dim=256)")
     
     def _text_to_vector(self, text: str):
         """Convertir texto a vector TF-IDF manual"""

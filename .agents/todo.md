@@ -73,7 +73,8 @@
 - [ ] **Verificar límites de cuota** de ambas APIs (pendiente para futuro)
 
 ### Opcionales (Mejoras futuras)
-- [ ] **Añadir persistencia** de historial de conversaciones
+- [x] **Añadir memoria temporal** con FAISS (solo durante sesión abierta) - **COMPLETADO**
+- [x] **Optimizar dimensión FAISS** a 256 para eficiencia - **COMPLETADO**
 - [ ] **Implementar caché** de resultados climáticos
 - [ ] **Añadir soporte** para múltiples ubicaciones
 - [ ] **Crear interfaz web** para el chat CLI
