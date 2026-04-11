@@ -11,18 +11,25 @@ Este chat permite:
 import sys
 import os
 import uuid
+import json
 import numpy as np
 import faiss
 import re
 from collections import Counter
 
-# Configurar paths para importar desde poc/agent-weather
-agent_weather_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'agent-weather')
+# Configurar paths para importar desde poc/agent-weather y lib/mcp
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+agent_weather_path = os.path.join(project_root, 'poc', 'agent-weather')
+lib_path = os.path.join(project_root, 'lib')
 sys.path.insert(0, agent_weather_path)
+sys.path.insert(0, lib_path)
 
 # Importar desde poc/agent-weather
 from src.schemas.chat import ChatSession, MessageType, Message
 from src.services.generic_chat_service import GenericChatService
+
+# Importar MCP Router
+from mcp.router import MCPRouter
 
 
 class MemoryManager:
@@ -170,11 +177,12 @@ def main():
         clear_screen()
         print_banner()
 
-        # Inicializar sesión, servicio de chat y memoria temporal
+        # Inicializar sesión, servicio de chat, memoria temporal y router MCP
         session_id = str(uuid.uuid4())[:8]
         chat_session = ChatSession(id=session_id)
         chat_service = GenericChatService()
         memory = MemoryManager()
+        mcp_router = MCPRouter()
 
         print(f"\n💡 Sesión iniciada: {session_id}")
         print("💡 Escribe 'salir' o 'exit' para terminar")
@@ -229,10 +237,78 @@ def main():
                 if user_input.lower() in ['herramientas', 'tools']:
                     print("\n🔧 HERRAMIENTAS DISPONIBLES:")
                     print("• get_weather(location): Consulta el clima de una ciudad")
+                    print("• say_hello(name, lang): Saludo personalizado en diferentes idiomas")
+                    print("• get_hello_languages(): Obtener idiomas soportados")
+                    continue
+                
+                # Comandos MCP directos
+                if user_input.lower().startswith('mcp '):
+                    # Ejecutar comando MCP directo
+                    try:
+                        command = user_input[4:].strip()
+                        if command == 'list-tools':
+                            request = {"method": "tools/list", "id": 1}
+                            response = mcp_router.handle_request(request)
+                            if response and 'result' in response:
+                                tools = response['result'].get('tools', [])
+                                print("\n🔧 Herramientas MCP disponibles:")
+                                for tool in tools:
+                                    print(f"• {tool['name']}: {tool.get('description', 'Sin descripción')}")
+                        else:
+                            print("Comando MCP no reconocido. Usa 'mcp list-tools' para ver herramientas disponibles.")
+                    except Exception as e:
+                        print(f"Error ejecutando comando MCP: {e}")
                     continue
 
                 if user_input == '':
                     continue
+
+                # Detectar y ejecutar comandos MCP
+                if user_input.strip().startswith('say_hello(') or user_input.strip().startswith('get_hello_languages('):
+                    try:
+                        # Parsear el comando MCP
+                        command = user_input.strip()
+                        if command.startswith('say_hello('):
+                            # Extraer parámetros
+                            params_str = command[10:-1]  # Remover 'say_hello(' y ')'
+                            params = {}
+                            for part in params_str.split(','):
+                                if '=' in part:
+                                    key, value = part.split('=', 1)
+                                    params[key.strip()] = value.strip().strip("'\"")
+                        
+                            # Ejecutar herramienta MCP
+                            request = {
+                                "method": "tools/call",
+                                "id": 1,
+                                "params": {
+                                    "name": "say_hello",
+                                    "arguments": params
+                                }
+                            }
+                            response = mcp_router.handle_request(request)
+                            
+                            if response and 'result' in response:
+                                content = response['result']['content'][0]['text']
+                                result_data = json.loads(content)
+                                message = result_data.get('message', 'Saludo ejecutado')
+                                
+                                # Mostrar resultado
+                                print(f"\n🔧 Resultado MCP: {message}")
+                                
+                                # Agregar al historial
+                                assistant_msg = Message(
+                                    type=MessageType.ASSISTANT,
+                                    content=message
+                                )
+                                chat_session.add_message(MessageType.USER, user_input)
+                                chat_session.add_message(assistant_msg.type, assistant_msg.content)
+                                memory.add_message(message, 'assistant')
+                                print(format_message(assistant_msg))
+                                continue
+                    except Exception as e:
+                        print(f"\n❌ Error ejecutando comando MCP: {e}")
+                        continue
 
                 # Agregar mensaje del usuario a la memoria
                 memory.add_message(user_input, 'user')

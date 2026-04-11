@@ -49,6 +49,24 @@
 - [x] `CHAT_USAGE.md` - Guía de uso rápida
 - [x] `INSTRUCCIONES_PROBAR.md` - Instrucciones detalladas
 
+### 8. Memoria Temporal con FAISS
+- [x] Instalar `faiss-cpu` y `sentence-transformers`
+- [x] Implementar `MemoryManager` con FAISS
+- [x] Integrar memoria en chat CLI
+- [x] Verificar funcionalidad de memoria temporal
+- [ ] Instalar dependencias faltantes (`scipy`, `scikit-learn`)
+- [ ] Mejorar memoria con embeddings preentrenados
+
+### 9. Integración MCP
+- [x] Explorar repositorio `mcp-example`
+- [x] Crear worktree para integración MCP
+- [x] Copiar estructura MCP a `lib/mcp`
+- [x] Crear router MCP unificado (`lib/mcp/router.py`)
+- [ ] Actualizar Chat CLI para usar router MCP
+- [ ] Registrar servicios en router MCP
+- [ ] Actualizar documentación arquitectura
+- [ ] Ejecutar pruebas de integración
+
 ## ✅ ESTADO ACTUAL DEL PROYECTO
 
 | Componente | Estado | Detalle |

@@ -1,0 +1,11 @@
+build/
+target/
+out/
+*.class
+.mvn/timing.properties
+!.mvn/
+!.mvn/wrapper/
+!.mvn/wrapper/maven-wrapper.jar
+!.mvn/wrapper/maven-wrapper.properties
+!mvnw
+!mvnw.cmd
