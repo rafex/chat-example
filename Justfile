@@ -26,33 +26,33 @@ install:
 # Ejecutar pruebas unitarias
 test:
     @echo "🧪 Ejecutando pruebas..."
-    cd {{PROJECT_DIR}} && venv/bin/pytest src/tests/ -v --tb=short
+    cd {{PROJECT_DIR}} && {{VENV_DIR}}/bin/pytest src/tests/ -v --tb=short
 
 # Ejecutar pruebas con cobertura
 test-cov:
     @echo "📊 Ejecutando pruebas con cobertura..."
-    cd {{PROJECT_DIR}} && venv/bin/pytest src/tests/ --cov=src --cov-report=term-missing
+    cd {{PROJECT_DIR}} && {{VENV_DIR}}/bin/pytest src/tests/ --cov=src --cov-report=term-missing
 
 # Ejecutar agente meteorológico
 run location:
     @echo "🌤️ Consultando clima para: {{location}}"
-    @cd {{PROJECT_DIR}} && venv/bin/python -c "from src.agents.weather_agent import run_weather_agent; import json; print(json.dumps(run_weather_agent('{{location}}'), indent=2, ensure_ascii=False))"
+    @cd {{PROJECT_DIR}} && {{VENV_DIR}}/bin/python -c "from src.agents.weather_agent import run_weather_agent; import json; print(json.dumps(run_weather_agent('{{location}}'), indent=2, ensure_ascii=False))"
 
 # Verificar estilo de código
 lint:
     @echo "🔍 Verificando estilo..."
-    cd {{PROJECT_DIR}} && venv/bin/python -m flake8 src/ || true
+    cd {{PROJECT_DIR}} && {{VENV_DIR}}/bin/python -m flake8 src/ || true
 
 # Formatear código
 format:
     @echo "✨ Formateando código..."
-    cd {{PROJECT_DIR}} && venv/bin/python -m black src/ --line-length 88 || true
+    cd {{PROJECT_DIR}} && {{VENV_DIR}}/bin/python -m black src/ --line-length 88 || true
 
 # Actualizar dependencias
 update:
     @echo "🔄 Actualizando dependencias..."
-    cd {{PROJECT_DIR}} && venv/bin/pip list --outdated
-    cd {{PROJECT_DIR}} && venv/bin/pip install --upgrade -r requirements.txt
+    cd {{PROJECT_DIR}} && {{VENV_DIR}}/bin/pip list --outdated
+    cd {{PROJECT_DIR}} && {{VENV_DIR}}/bin/pip install --upgrade -r requirements.txt
 
 # Generar documentación
 docs:
@@ -84,12 +84,12 @@ install-chat:
 # Ejecutar chat CLI interactivo
 chat:
     @echo "🌤️ Iniciando chat climatológico..."
-    cd {{PROJECT_DIR}} && {{VENV_DIR}}/bin/python src/chat_cli.py
+    cd poc/agent-weather && source venv/bin/activate && python src/chat_cli.py
 
 # Ejecutar chat CLI con modo prueba (sin interfaz interactiva)
 chat-test:
     @echo "🧪 Ejecutando chat CLI en modo prueba..."
-    cd {{PROJECT_DIR}} && {{VENV_DIR}}/bin/python src/test_chat.py
+    cd poc/agent-weather && source venv/bin/activate && python src/test_chat.py
 
 # Ver comandos disponibles del chat
 chat-help:
