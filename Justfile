@@ -6,6 +6,8 @@ set dotenv-load
 # Variables
 PROJECT_DIR := "poc/agent-weather"
 VENV_DIR := "poc/agent-weather/venv"
+CHAT_DIR := "poc/chatCLI"
+CHAT_VENV_DIR := "poc/chatCLI/venv"
 PYTHON := "python3"
 
 # Configuración de just
@@ -66,7 +68,37 @@ test-location +location="Madrid":
 clean:
     @echo "🧹 Limpiando..."
     rm -rf {{VENV_DIR}}
+    rm -rf {{CHAT_VENV_DIR}}
     rm -rf .pytest_cache
     rm -rf {{PROJECT_DIR}}/src/__pycache__
     rm -rf {{PROJECT_DIR}}/.pytest_cache
     find {{PROJECT_DIR}} -name "*.pyc" -delete || true
+    find {{CHAT_DIR}} -name "*.pyc" -delete || true
+
+# Instalar dependencias del chat CLI
+install-chat:
+    @echo "📦 Instalando dependencias del chat CLI..."
+    python3 -m venv {{CHAT_VENV_DIR}}
+    {{CHAT_VENV_DIR}}/bin/pip install -r {{CHAT_DIR}}/requirements.txt
+
+# Ejecutar chat CLI interactivo
+chat:
+    @echo "🌤️ Iniciando chat climatológico..."
+    cd {{PROJECT_DIR}} && {{VENV_DIR}}/bin/python src/chat_cli.py
+
+# Ejecutar chat CLI con modo prueba (sin interfaz interactiva)
+chat-test:
+    @echo "🧪 Ejecutando chat CLI en modo prueba..."
+    cd {{PROJECT_DIR}} && {{VENV_DIR}}/bin/python src/test_chat.py
+
+# Ver comandos disponibles del chat
+chat-help:
+    @echo "📖 Comandos disponibles para el chat CLI:"
+    @echo "  just chat              - Iniciar chat interactivo"
+    @echo "  just chat-test         - Probar chat sin interfaz interactiva"
+    @echo ""
+    @echo "Comandos dentro del chat:"
+    @echo "  'salir' o 'exit'       - Salir del chat"
+    @echo "  'limpiar' o 'clear'    - Limpiar pantalla"
+    @echo "  'historial'            - Ver historial reciente"
+    @echo "  'ayuda'                - Ver ayuda del asistente"
