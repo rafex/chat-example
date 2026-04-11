@@ -36,16 +36,19 @@ class OrquestadorState(TypedDict):
 
 ## Flujo de Ejecución
 
-1. **Análisis de Intención** (`analyze_intent_node`)
-   - Detecta palabras clave en la entrada del usuario
+1. **Análisis de Intención con LLM** (`analyze_intent_node`)
+   - Utiliza el LLM (DeepSeek) para analizar la intención del usuario
+   - Detecta automáticamente la intención y argumentos relevantes
    - Clasifica la intención como:
      - `weather_query`: Consulta de clima
      - `mcp_*`: Comandos MCP (saludo, idiomas, etc.)
      - `general_chat`: Conversación general
+   - **Nota**: Si el LLM no está disponible, usa análisis por reglas como fallback
 
 2. **Decisión de Herramienta**
-   - Basada en la intención, selecciona la herramienta apropiada
-   - Extrae argumentos de la entrada (ej: ubicación para clima)
+   - Basada en la intención detectada por el LLM, selecciona la herramienta apropiada
+   - Extrae argumentos de la entrada (ej: ubicación para clima, nombre para saludos)
+   - El LLM determina la confianza de la detección (0.0-1.0)
 
 3. **Ejecución de Herramienta** (`execute_tool_node`)
    - Llama al wrapper correspondiente
@@ -105,6 +108,42 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## Configuración del LLM
+
+El agente orquestador utiliza el LLM (DeepSeek) para el análisis de intención. Para configurar el LLM:
+
+1. **Variables de entorno** (en `.env` o variables de sistema):
+   ```
+   LLM_PROVIDER_API_KEY=your_api_key_here
+   LLM_PROVIDER_API_BASE=https://api.deepseek.com/v1
+   LLM_PROVIDER_MODEL=deepseek-chat
+   ```
+
+2. **Backward compatibility** con variables antiguas de DeepSeek:
+   - `DEEPSEEK_API_KEY`
+   - `DEEPSEEK_API_BASE`
+   - `DEEPSEEK_MODEL`
+
+3. **Fallback**: Si el LLM no está disponible, el agente orquestador usa análisis por reglas como fallback automático.
+
+## Cómo funciona el LLM en el análisis de intención
+
+El LLM recibe:
+- **Sistema**: Instrucciones sobre herramientas disponibles y formato de salida
+- **Historial**: Conversaciones recientes para contexto
+- **Usuario**: Mensaje actual del usuario
+
+El LLM devuelve un JSON con:
+```json
+{
+  "intent": "string describiendo la intención",
+  "tool_type": "weather" | "mcp" | "chat",
+  "tool_name": "nombre de la herramienta MCP (solo si tool_type es mcp)",
+  "arguments": {"key": "value"},
+  "confidence": 0.0-1.0
+}
+```
+
 ## Pruebas
 
 ```bash
@@ -139,10 +178,10 @@ poc/agent-orquestador/
 ## Próximos Pasos
 
 1. **Integración completa del agente meteorológico** con API Key
-2. **Mejorar análisis de intención** con LLM para mayor precisión
-3. **Añadir más herramientas MCP** al router
-4. **Crear pruebas automatizadas** con pytest
-5. **Documentar API completa** en `docs/api.md`
+2. **Añadir más herramientas MCP** al router
+3. **Crear pruebas automatizadas** con pytest
+4. **Documentar API completa** en `docs/api.md`
+5. **Mejorar prompts del LLM** para mayor precisión en la detección de intenciones
 
 ## Referencias
 

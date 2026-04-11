@@ -1,6 +1,25 @@
 import json
+import sys
+import os
 from typing import List, Dict, Optional
-from src.config import Config
+
+# Asegurar que el directorio padre de 'src' esté en el path para importar config
+current_dir = os.path.dirname(os.path.abspath(__file__))
+agent_weather_src = os.path.dirname(current_dir)  # poc/agent-weather/src
+agent_weather_root = os.path.dirname(agent_weather_src)  # poc/agent-weather
+
+if agent_weather_root not in sys.path:
+    sys.path.insert(0, agent_weather_root)
+
+try:
+    from src.config import Config
+except ImportError:
+    # Fallback: intentar importar directamente si 'src' no está como paquete
+    try:
+        sys.path.insert(0, agent_weather_src)
+        from config import Config
+    except ImportError:
+        raise ImportError("No se pudo importar Config desde src.config ni config")
 
 class LLMProviderService:
     """Servicio para interactuar con proveedores LLM genéricos (compatible con OpenAI)"""

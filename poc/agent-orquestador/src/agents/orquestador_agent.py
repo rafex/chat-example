@@ -53,11 +53,14 @@ class AgentOrquestador:
         agent_weather_root = os.path.join(project_root, 'poc', 'agent-weather')
         agent_weather_src = os.path.join(agent_weather_root, 'src')
         
+        # Para imports como 'from src.config import Config', 
+        # necesitamos que el directorio padre de 'src' esté en sys.path
+        # (es decir, 'poc/agent-weather')
         paths_to_add = [
-            agent_weather_src,
+            agent_weather_root,  # Permite 'from src.config import Config'
+            agent_weather_src,   # Por si acaso se usa 'from config import Config'
             os.path.join(agent_weather_src, 'services'),
             os.path.join(agent_weather_src, 'schemas'),
-            agent_weather_root,
             project_root,
         ]
         

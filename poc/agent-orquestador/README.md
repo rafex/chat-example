@@ -6,7 +6,18 @@ Cerebro central del sistema que orquesta la ejecución de herramientas según la
 
 ```
 Usuario → Chat CLI → Agente Orquestador (LangGraph) → [Weather / MCP / Chat]
+                        ↓
+                     LLM (DeepSeek)
+                        ↓
+                  Análisis de Intención
 ```
+
+**Características principales:**
+- ✅ Usa LLM (DeepSeek) para analizar la intención del usuario
+- ✅ Decisión inteligente de qué herramienta usar
+- ✅ Fallback automático a análisis por reglas si LLM no está disponible
+- ✅ Memoria de conversación con FAISS
+- ✅ Integración con MCP Router para herramientas adicionales
 
 ## Instalación
 
