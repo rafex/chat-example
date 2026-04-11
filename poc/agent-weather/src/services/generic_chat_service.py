@@ -14,6 +14,7 @@ import json
 from src.config import Config
 from src.agents.weather_agent import run_weather_agent
 from src.services.deepseek_service import DeepSeekService
+from src.services.mcp_service import HelloMCPServer
 
 
 class ToolType(str, Enum):
@@ -26,6 +27,9 @@ class GenericChatService:
 
     def __init__(self):
         self.llm_service = None
+        self.mcp_servers = {}
+        
+        # Definir herramientas del sistema
         self.tools = {
             "get_weather": {
                 "name": "get_weather",
@@ -40,6 +44,24 @@ class GenericChatService:
                     },
                     "required": ["location"]
                 }
+            },
+            "say_hello": {
+                "name": "say_hello",
+                "description": "Envía un saludo en diferentes idiomas",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Nombre de la persona a saludar (opcional)"
+                        },
+                        "lang": {
+                            "type": "string",
+                            "description": "Idioma del saludo (en, es, fr, etc.)"
+                        }
+                    },
+                    "required": []
+                }
             }
         }
         
@@ -49,6 +71,25 @@ class GenericChatService:
         except Exception as e:
             print(f"⚠️  No se pudo inicializar LLM: {e}")
             self.llm_service = None
+        
+        # Inicializar servidores MCP
+        self._init_mcp_servers()
+    
+    def _init_mcp_servers(self):
+        """Inicializa los servidores MCP"""
+        try:
+            # Importar directamente el servicio de hello para simplificar
+            import sys
+            sys.path.insert(0, "/Users/rafex/repository/github/rafex/mcp-example/mcp/hello/python")
+            from hello_service import build_hello_payload, get_supported_languages
+            
+            self.mcp_servers["hello"] = {
+                "build_hello_payload": build_hello_payload,
+                "get_supported_languages": get_supported_languages
+            }
+            print(f"✅ Servicio 'hello' cargado (MCP)")
+        except Exception as e:
+            print(f"⚠️  Error cargando servicio hello: {e}")
 
     def get_system_prompt(self) -> str:
         """Prompt del sistema para el asistente"""
@@ -81,7 +122,24 @@ HERRAMIENTAS DISPONIBLES:
         """
         message_lower = message.lower()
 
-        # Palabras clave para clima
+        # 1. Detectar herramienta de saludo (MCP)
+        # Patrones para detectar saludos en diferentes idiomas
+        hello_patterns = [
+            'hola', 'hello', 'bonjour', 'ni hao', 'namaste', 
+            'marhaban', 'nomoskar', 'ola', 'privet', 'assalam'
+        ]
+        
+        # Si el mensaje contiene palabras de saludo y/o pide un saludo
+        if any(pattern in message_lower for pattern in hello_patterns):
+            # Intentar extraer nombre y idioma
+            name = self.extract_name(message)
+            lang = self.extract_language(message)
+            
+            # Si hay mención de nombre o idioma, usar herramienta say_hello
+            if name or lang or any(pattern in message_lower for pattern in ['saluda', 'greet', 'di hola']):
+                return "say_hello", {"name": name, "lang": lang}
+
+        # 2. Detectar herramienta de clima
         weather_keywords = [
             'clima', 'tiempo', 'temperatura', 'lluvia', 'sol', 'calor',
             'frío', 'viento', 'nieve', 'humedad', 'nublado', 'soleado',
@@ -149,6 +207,54 @@ HERRAMIENTAS DISPONIBLES:
 
         return None
 
+    def extract_name(self, message: str) -> Optional[str]:
+        """Extrae un nombre del mensaje para saludos"""
+        # Patrones comunes: "hola [nombre]", "saluda a [nombre]", etc.
+        message_lower = message.lower()
+        
+        # Buscar después de "a" o "al" (ej: "hola a Juan")
+        words = message.split()
+        for i, word in enumerate(words):
+            if word.lower() in ['a', 'al'] and i + 1 < len(words):
+                name = words[i + 1].strip('?,.!:;')
+                if len(name) > 1 and name[0].isupper():  # Nombre probablemente empieza con mayúscula
+                    return name
+        
+        # Buscar "saluda a [nombre]"
+        for marker in ['saluda a', 'greet to', 'di hola a']:
+            if marker in message_lower:
+                start = message_lower.find(marker) + len(marker)
+                name = message[start:].strip()
+                if name:
+                    return name.split()[0].strip('?,.!:;')
+        
+        return None
+
+    def extract_language(self, message: str) -> Optional[str]:
+        """Extrae el idioma del mensaje"""
+        message_lower = message.lower()
+        
+        # Mapeo de idiomas
+        lang_map = {
+            'en': ['english', 'inglés', 'en', 'ingles'],
+            'es': ['español', 'espanol', 'spanish', 'es'],
+            'fr': ['francés', 'frances', 'french', 'fr'],
+            'zh': ['chino', 'chinese', 'zh'],
+            'hi': ['hindi', 'hindú', 'hi'],
+            'ar': ['árabe', 'arabe', 'arabic', 'ar'],
+            'bn': ['bengalí', 'bengali', 'bn'],
+            'pt': ['portugués', 'portugues', 'portuguese', 'pt'],
+            'ru': ['ruso', 'russian', 'ru'],
+            'ur': ['urdu', 'ur'],
+        }
+        
+        for lang_code, lang_names in lang_map.items():
+            for lang_name in lang_names:
+                if lang_name in message_lower:
+                    return lang_code
+        
+        return None
+
     def call_tool(self, tool_name: str, tool_args: Dict) -> str:
         """Ejecuta una herramienta y devuelve el resultado"""
         if tool_name == "get_weather":
@@ -181,6 +287,37 @@ HERRAMIENTAS DISPONIBLES:
                            f"La API de OpenWeatherMap necesita 2h para activarse."
             except Exception as e:
                 return f"Error al consultar el clima: {str(e)}"
+
+        elif tool_name == "say_hello":
+            name = tool_args.get("name")
+            lang = tool_args.get("lang")
+            
+            # Usar servidor MCP si está disponible
+            if "hello" in self.mcp_servers:
+                try:
+                    result = self.mcp_servers["hello"].say_hello(name=name, lang=lang)
+                    if result and result.get("message"):
+                        return f"👋 {result['message']} (idioma: {result.get('lang', 'en')})"
+                except Exception as e:
+                    print(f"⚠️ Error usando MCP hello: {e}")
+            
+            # Fallback si MCP no está disponible
+            greetings = {
+                "en": "Hello",
+                "es": "Hola",
+                "fr": "Bonjour",
+                "zh": "Ni hao",
+                "hi": "Namaste",
+                "ar": "Marhaban",
+                "pt": "Ola",
+                "ru": "Privet",
+            }
+            
+            greeting = greetings.get(lang, greetings["en"])
+            if name:
+                return f"👋 {greeting} {name}!"
+            else:
+                return f"👋 {greeting}!"
 
         return f"Herramienta '{tool_name}' no encontrada."
 

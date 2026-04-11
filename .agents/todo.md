@@ -59,15 +59,15 @@
 | Tests | ✅ 9/9 PASANDO | Unidad e integración |
 | Documentación | ✅ Completa | Guías y READMEs |
 | Justfile | ✅ Actualizado | Comandos de chat añadidos |
-| OpenWeatherMap | ⏳ Pendiente | 2h de activación requeridas |
+| OpenWeatherMap | ✅ Activa | API funcionando correctamente |
 | DeepSeek API | ✅ Configurada | Lista para uso |
 
-## ⏳ TAREAS PENDIENTES (Proximos Pasos)
+## ✅ TAREAS PENDIENTES COMPLETADAS
 
 ### Inmediatas (24-48h)
-- [ ] **Esperar activación de OpenWeatherMap** (2h desde email recibido)
-- [ ] **Probar chat CLI con API real** después de activación
-- [ ] **Verificar límites de cuota** de ambas APIs
+- [x] **Esperar activación de OpenWeatherMap** (2h desde email recibido) - **COMPLETADO**
+- [x] **Probar chat CLI con API real** después de activación - **COMPLETADO**
+- [ ] **Verificar límites de cuota** de ambas APIs (pendiente)
 
 ### Opcionales (Mejoras futuras)
 - [ ] **Añadir persistencia** de historial de conversaciones
