@@ -114,7 +114,7 @@ HERRAMIENTAS DISPONIBLES:
 - get_weather(location): Consulta el clima de una ciudad específica
 """
 
-    def detectar_herramienta(self, message: str) -> tuple[Optional[str], Optional[Dict]]:
+    def detectar_herramienta(self, message: str, conversation_history: List[Dict] = None) -> tuple[Optional[str], Optional[Dict]]:
         """
         Detecta si se necesita una herramienta y cuál.
         Returns: (tool_name, tool_args)
@@ -139,8 +139,8 @@ HERRAMIENTAS DISPONIBLES:
         
         # Si el mensaje contiene palabras de saludo y/o pide un saludo
         if any(pattern in message_lower for pattern in hello_patterns):
-            # Intentar extraer nombre y idioma
-            name = self.extract_name(message)
+            # Intentar extraer nombre y idioma (usando historial si está disponible)
+            name = self.extract_name(message, conversation_history)
             lang = self.extract_language(message)
             
             # Si no se detectó idioma pero hay una palabra de saludo, usar el idioma de esa palabra
@@ -223,7 +223,7 @@ HERRAMIENTAS DISPONIBLES:
 
         return None
 
-    def extract_name(self, message: str) -> Optional[str]:
+    def extract_name(self, message: str, conversation_history: List[Dict] = None) -> Optional[str]:
         """Extrae un nombre del mensaje para saludos"""
         # Patrones comunes: "hola [nombre]", "saluda a [nombre]", etc.
         message_lower = message.lower()
@@ -243,6 +243,32 @@ HERRAMIENTAS DISPONIBLES:
                 name = message[start:].strip()
                 if name:
                     return name.split()[0].strip('?,.!:;')
+        
+        # Si el mensaje contiene "llamo" o "soy", buscar nombre después
+        if 'llamo' in message_lower or 'soy' in message_lower:
+            words = message.split()
+            for i, word in enumerate(words):
+                if word.lower() in ['llamo', 'soy'] and i + 1 < len(words):
+                    name = words[i + 1].strip('?,.!:;')
+                    if len(name) > 1:
+                        return name
+        
+        # Si no se encontró nombre en el mensaje actual, buscar en el historial
+        if conversation_history:
+            # Buscar en mensajes del usuario (role='user')
+            for msg in conversation_history:
+                if msg.get("role") == "user":
+                    msg_content = msg.get("content", "")
+                    msg_lower = msg_content.lower()
+                    
+                    # Buscar "me llamo [nombre]" o "soy [nombre]" en el historial
+                    if 'llamo' in msg_lower or 'soy' in msg_lower:
+                        words = msg_content.split()
+                        for i, word in enumerate(words):
+                            if word.lower() in ['llamo', 'soy'] and i + 1 < len(words):
+                                name = words[i + 1].strip('?,.!:;')
+                                if len(name) > 1:
+                                    return name
         
         return None
 
@@ -352,8 +378,8 @@ HERRAMIENTAS DISPONIBLES:
         if conversation_history is None:
             conversation_history = []
 
-        # 1. Detectar si se necesita una herramienta
-        tool_name, tool_args = self.detectar_herramienta(user_message)
+        # 1. Detectar si se necesita una herramienta (pasando el historial)
+        tool_name, tool_args = self.detectar_herramienta(user_message, conversation_history)
 
         # 2. Si se detectó una herramienta, ejecutarla
         if tool_name:

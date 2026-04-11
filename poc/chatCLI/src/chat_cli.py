@@ -244,11 +244,13 @@ def main():
                     context_text = "\n".join([f"- {r['text']}" for r in context_results])
                     print(f"\n🧠 Contexto recuperado de la memoria:\n{context_text}")
 
-                # Preparar historial para el servicio de chat
+                # Preparar historial para el servicio de chat (incluyendo mensaje actual)
                 conversation_history = [
                     {"role": msg.type.value, "content": msg.content}
                     for msg in chat_session.messages
                 ]
+                # Agregar mensaje actual al historial para detección de nombre
+                conversation_history.append({"role": "user", "content": user_input})
 
                 # Procesar mensaje con el servicio de chat
                 result = chat_service.chat(user_input, conversation_history)
