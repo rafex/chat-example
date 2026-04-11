@@ -26,12 +26,12 @@ install:
 # Ejecutar pruebas unitarias
 test:
     @echo "🧪 Ejecutando pruebas..."
-    cd {{PROJECT_DIR}} && {{VENV_DIR}}/bin/pytest src/tests/ -v --tb=short
+    cd poc/agent-weather && source venv/bin/activate && python -m pytest src/tests/ -v --tb=short
 
 # Ejecutar pruebas con cobertura
 test-cov:
     @echo "📊 Ejecutando pruebas con cobertura..."
-    cd {{PROJECT_DIR}} && {{VENV_DIR}}/bin/pytest src/tests/ --cov=src --cov-report=term-missing
+    cd poc/agent-weather && source venv/bin/activate && python -m pytest src/tests/ --cov=src --cov-report=term-missing
 
 # Ejecutar agente meteorológico
 run location:
