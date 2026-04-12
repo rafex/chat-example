@@ -104,6 +104,9 @@
 | Agente Orquestador | ✅ Completo | LangGraph StateGraph con decisión de herramientas |
 | MCP Router | ✅ Integrado | Herramientas MCP en agente orquestador |
 | Memoria FAISS | ✅ Completa | Embeddings semánticos (all-MiniLM-L6-v2, dim=384) |
+| Agente Meteorológico | ✅ Funcional | OpenWeatherMap API + DeepSeek LLM |
+| Chat CLI | ✅ Interfaz pura | Solo entrada/salida, sin inferencia local |
+| Configuración TOML | ✅ Implementada | Prompts configurables en `agent-orquestador/config/prompts.toml` |
 
 ## ✅ TAREAS PENDIENTES COMPLETADAS
 

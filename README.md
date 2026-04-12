@@ -1,33 +1,37 @@
-# Agente Meteorológico con LangGraph + DeepSeek
+# Sistema de Agentes con LangGraph
 
-Un agente inteligente que consume la API de OpenWeatherMap y utiliza **DeepSeek** (LLM) para generar recomendaciones meteorológicas naturales y personalizadas.
+Sistema multi-agente inteligente que integra **OpenWeatherMap** para clima, **MCP** para herramientas adicionales y **LLM** (DeepSeek/OpenAI/OpenRouter) para análisis de intención y conversación.
 
 ## Características
 
-- **Consumo de API**: Cliente HTTP para la API pública de OpenWeatherMap
-- **Análisis de clima**: Procesamiento de datos meteorológicos (temperatura, humedad, viento)
-- **Integración LLM**: DeepSeek para generar recomendaciones conversacionales
-- **Flujo LangGraph**: Orquestación del agente usando grafos de estado
-- **Fallback inteligente**: Recomendaciones básicas si el LLM falla
+- **Agente Orquestador**: Decide qué herramienta usar basándose en la intención del usuario
+- **Agente Meteorológico**: Consulta la API de OpenWeatherMap y genera recomendaciones con LLM
+- **MCP Router**: Integra herramientas adicionales (saludos multilingües, etc.)
+- **Memoria FAISS**: Contexto de conversación con embeddings semánticos
+- **Soporte Multi-LLM**: DeepSeek, OpenAI y OpenRouter configurables dinámicamente
+- **Configuración TOML**: Prompts del agente orquestador configurables vía archivo TOML
 
 ## Estructura del Proyecto
 
 ```
 .
-├── Makefile               # Build system
-├── Justfile              # Task runner
-├── README.md             # Documentación
-└── poc/agent-weather/    # Directorio del proyecto
-    ├── src/              # Código fuente
-    │   ├── agents/       # Lógica del agente LangGraph
-    │   ├── services/     # Cliente HTTP para OpenWeatherMap
-    │   ├── schemas/      # Modelos Pydantic
-    │   ├── config.py     # Configuración
-    │   └── tests/        # Pruebas unitarias
-    ├── venv/             # Entorno virtual
-    ├── requirements.txt  # Dependencias Python
-    ├── .env              # Variables de entorno (API Key) - Ignorado en git
-    └── .env.example      # Plantilla de variables de entorno
+├── Makefile                    # Build system
+├── Justfile                    # Task runner
+├── README.md                   # Documentación
+├── poc/                        # Directorio de pruebas y proyectos
+│   ├── .env                    # Variables de entorno compartidas
+│   ├── .env.example            # Plantilla de variables de entorno
+│   ├── agent-weather/          # Agente meteorológico
+│   │   ├── src/                # Código fuente
+│   │   ├── venv/               # Entorno virtual
+│   │   └── requirements.txt    # Dependencias Python
+│   ├── agent-orquestador/      # Agente orquestador
+│   │   ├── src/                # Código fuente
+│   │   └── config/             # Configuración (prompts.toml)
+│   └── chatCLI/                # Chat CLI (interfaz de entrada/salida)
+│       ├── src/                # Código fuente
+│       └── venv/               # Entorno virtual
+└── lib/mcp/                    # MCP Router (herramientas adicionales)
 ```
 
 ## Uso
@@ -46,7 +50,53 @@ just install
 
 1. Copia la plantilla de variables de entorno:
 ```bash
-cp poc/agent-weather/.env.example poc/agent-weather/.env
+cp poc/.env.example poc/.env
+```
+
+2. Configura las API Keys en `poc/.env`:
+   - `OPENWEATHER_API_KEY`: Clave de OpenWeatherMap (obtenla en https://openweathermap.org/api)
+   - `OPENAI_API_KEY`: Clave de OpenAI (opcional)
+   - `DEEPSEEK_API_KEY`: Clave de DeepSeek (opcional)
+   - `OPENROUTER_API_KEY`: Clave de OpenRouter (opcional)
+
+3. Configura el proveedor LLM por defecto:
+   ```bash
+   # En poc/.env
+   CURRENT_LLM_PROVIDER=deepseek  # deepseek, openai, o openrouter
+   ```
+
+### Ejecutar el Chat CLI
+
+```bash
+cd poc/chatCLI
+source venv/bin/activate
+python src/chat_cli.py
+```
+
+### Comandos disponibles en el Chat CLI
+
+- `/model [openai|deepseek|openrouter]`: Cambiar proveedor LLM
+- `mcp list-tools`: Listar herramientas MCP disponibles
+- `historial`: Ver historial de la sesión
+- `herramientas`: Ver herramientas disponibles
+- `limpiar`: Limpiar pantalla
+- `ayuda`: Mostrar todos los comandos
+- `salir`: Terminar la conversación
+
+### Ejemplos de uso
+
+```
+Usuario: "¿Cómo está el clima en Madrid?"
+Asistente: Consulta el clima de Madrid y genera recomendaciones
+
+Usuario: "say_hello(name=Juan, lang=es)"
+Asistente: Saluda a Juan en español
+
+Usuario: "/model openai"
+Asistente: Cambia a proveedor OpenAI
+
+Usuario: "hola, me llamo Carlos y vivo en Barcelona"
+Asistente: Recuerda el nombre y ubicación del usuario
 ```
 
 2. Edita `poc/agent-weather/.env` con tu API Key de OpenWeatherMap:
