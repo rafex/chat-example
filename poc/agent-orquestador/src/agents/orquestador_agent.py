@@ -165,29 +165,54 @@ class AgentOrquestador:
         try:
             response = self.llm.chat(messages)
             
+            # Debug: mostrar respuesta del LLM
+            print(f"DEBUG: Respuesta del LLM: {response}")
+            
             # Parsear respuesta JSON
             json_match = re.search(r'\{.*\}', response, re.DOTALL)
             if json_match:
-                result = json.loads(json_match.group())
+                try:
+                    result = json.loads(json_match.group())
+                    
+                    # Debug: mostrar resultado parseado
+                    print(f"DEBUG: Resultado parseado: {result}")
+                    
+                    # Validar que result es un diccionario
+                    if not isinstance(result, dict):
+                        print(f"⚠️  El resultado no es un diccionario: {type(result)}")
+                        return self.analyze_intent_by_rules(user_input, history)
+                    
+                    # Asegurar que tool_name esté en arguments para herramientas MCP
+                    arguments = result.get("arguments")
+                    if arguments is None:
+                        arguments = {}
+                    
+                    if result.get("tool_type") == "mcp" and "tool_name" not in arguments:
+                        # Extraer tool_name del intent o usar el nombre de la herramienta
+                        intent_name = result.get("intent", "")
+                        if intent_name.startswith("mcp_"):
+                            arguments["tool_name"] = intent_name[4:]
+                    
+                    return {
+                        "intent": result.get("intent", "general_chat"),
+                        "confidence": result.get("confidence", 0.7),
+                        "tool_type": result.get("tool_type", "chat"),
+                        "arguments": arguments
+                    }
+                except json.JSONDecodeError as e:
+                    print(f"⚠️  Error parseando JSON del LLM: {e}")
+                    print(f"   Respuesta: {response}")
+                    return self.analyze_intent_by_rules(user_input, history)
+            else:
+                # Si no se encuentra JSON, usar análisis por reglas
+                print(f"⚠️  No se encontró JSON en la respuesta del LLM: {response}")
+                return self.analyze_intent_by_rules(user_input, history)
                 
-                # Asegurar que tool_name esté en arguments para herramientas MCP
-                arguments = result.get("arguments", {})
-                if result.get("tool_type") == "mcp" and "tool_name" not in arguments:
-                    # Extraer tool_name del intent o usar el nombre de la herramienta
-                    intent_name = result.get("intent", "")
-                    if intent_name.startswith("mcp_"):
-                        arguments["tool_name"] = intent_name[4:]
-                
-                return {
-                    "intent": result.get("intent", "general_chat"),
-                    "confidence": result.get("confidence", 0.7),
-                    "tool_type": result.get("tool_type", "chat"),
-                    "arguments": arguments
-                }
         except Exception as e:
-            print(f"⚠️  Error con LLM, usando análisis por reglas: {e}")
-        
-        return self.analyze_intent_by_rules(user_input, history)
+            print(f"⚠️  Error en análisis con LLM: {e}")
+            import traceback
+            traceback.print_exc()
+            return self.analyze_intent_by_rules(user_input, history)
     
     def analyze_intent_by_rules(self, user_input: str, history: Sequence[dict[str, str]]) -> IntentAnalysis:
         """
