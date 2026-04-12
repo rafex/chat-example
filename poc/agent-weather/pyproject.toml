@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-weather"
+version = "0.1.0"
+description = "Agente meteorológico para sistema de orquestación"
+readme = "README.md"
+requires-python = ">=3.14"
+license = {text = "MIT"}
+authors = [
+    {name = "Team", email = "team@example.com"}
+]
+dependencies = [
+    "langgraph==1.1.6",
+    "requests==2.31.0",
+    "pydantic==2.12.5",
+    "python-dotenv==1.0.0",
+    "openai==1.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==7.4.3",
+    "pytest-cov==4.1.0",
+    "black==23.11.0",
+    "isort==5.12.0",
+    "flake8==6.1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["agent_weather*"]
+
+[tool.black]
+line-length = 88
+target-version = ['py314']
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.pytest.ini_options]
+testpaths = ["src/tests"]
+pythonpath = ["src"]

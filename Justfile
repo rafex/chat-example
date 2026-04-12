@@ -1,105 +1,47 @@
-# Justfile - Task Runner para Agente Meteorológico
-# Tareas de ejecución y automatización
+# justfile para tareas operativas
+# Responsabilidad única: Task runner (ejecución y tareas operativas)
 
 set dotenv-load
 
 # Variables
-PROJECT_DIR := "poc/agent-weather"
-VENV_DIR := "poc/agent-weather/venv"
-CHAT_DIR := "poc/chatCLI"
-CHAT_VENV_DIR := "poc/chatCLI/venv"
-PYTHON := "python3"
+VENV_CHAT := "poc/chatCLI/venv"
+VENV_WEATHER := "poc/agent-weather/venv"
+VENV_ORQUESTADOR := "poc/agent-orquestador/venv"
 
 # Configuración de just
 set fallback
 
 # Default target
-default:
+_default:
     @just --list
 
-# Instalar dependencias en entorno virtual
-install:
-    @echo "📦 Instalando dependencias..."
-    python3 -m venv {{VENV_DIR}}
-    {{VENV_DIR}}/bin/pip install -r {{PROJECT_DIR}}/requirements.txt
+# Configurar el entorno (llama a make)
+setup:
+    make all
 
-# Ejecutar pruebas unitarias
-test:
-    @echo "🧪 Ejecutando pruebas..."
-    cd poc/agent-weather && source venv/bin/activate && python -m pytest src/tests/ -v --tb=short
+# Ejecutar la aplicación CLI
+run:
+    {{VENV_CHAT}}/bin/python poc/chatCLI/src/chat_cli.py
 
-# Ejecutar pruebas con cobertura
-test-cov:
-    @echo "📊 Ejecutando pruebas con cobertura..."
-    cd poc/agent-weather && source venv/bin/activate && python -m pytest src/tests/ --cov=src --cov-report=term-missing
+# Ejecutar pruebas de cada proyecto
+test-weather:
+    {{VENV_WEATHER}}/bin/python -m pytest poc/agent-weather/src/tests/ -v
 
-# Ejecutar agente meteorológico
-run location:
-    @echo "🌤️ Consultando clima para: {{location}}"
-    @cd {{PROJECT_DIR}} && {{VENV_DIR}}/bin/python -c "from src.agents.weather_agent import run_weather_agent; import json; print(json.dumps(run_weather_agent('{{location}}'), indent=2, ensure_ascii=False))"
+test-orquestador:
+    {{VENV_ORQUESTADOR}}/bin/python -m pytest poc/agent-orquestador/src/tests/ -v
 
-# Verificar estilo de código
-lint:
-    @echo "🔍 Verificando estilo..."
-    cd {{PROJECT_DIR}} && {{VENV_DIR}}/bin/python -m flake8 src/ || true
+test-chat:
+    {{VENV_CHAT}}/bin/python -m pytest poc/chatCLI/src/tests/ -v
 
-# Formatear código
-format:
-    @echo "✨ Formateando código..."
-    cd {{PROJECT_DIR}} && {{VENV_DIR}}/bin/python -m black src/ --line-length 88 || true
+test: test-weather test-orquestador test-chat
 
-# Actualizar dependencias
-update:
-    @echo "🔄 Actualizando dependencias..."
-    cd {{PROJECT_DIR}} && {{VENV_DIR}}/bin/pip list --outdated
-    cd {{PROJECT_DIR}} && {{VENV_DIR}}/bin/pip install --upgrade -r requirements.txt
-
-# Generar documentación
-docs:
-    @echo "📚 Generando documentación..."
-    {{VENV_DIR}}/bin/python -c "import pydoc; help(poc.agent_weather.src.agents.weather_agent)" || echo "Documentación generada"
-
-# Crear nueva ubicación para test
-test-location +location="Madrid":
-    @echo "Probando ubicación: {{location}}"
-    @just run "{{location}}"
-
-# Limpiar entorno y artefactos
+# Limpieza (delega en make)
 clean:
-    @echo "🧹 Limpiando..."
-    rm -rf {{VENV_DIR}}
-    rm -rf {{CHAT_VENV_DIR}}
-    rm -rf .pytest_cache
-    rm -rf {{PROJECT_DIR}}/src/__pycache__
-    rm -rf {{PROJECT_DIR}}/.pytest_cache
-    find {{PROJECT_DIR}} -name "*.pyc" -delete || true
-    find {{CHAT_DIR}} -name "*.pyc" -delete || true
+    make clean
 
-# Instalar dependencias del chat CLI
-install-chat:
-    @echo "📦 Instalando dependencias del chat CLI..."
-    python3 -m venv {{CHAT_VENV_DIR}}
-    {{CHAT_VENV_DIR}}/bin/pip install -r {{CHAT_DIR}}/requirements.txt
-
-# Ejecutar chat CLI interactivo (genérico)
-chat:
-    @echo "🤖 Iniciando chat genérico con herramientas..."
-    cd poc/chatCLI && source venv/bin/activate && python src/chat_cli.py
-
-# Ejecutar pruebas del chat genérico
-chat-test:
-    @echo "🧪 Ejecutando pruebas del chat genérico..."
-    cd poc/chatCLI && source venv/bin/activate && python src/test_chat.py
-
-# Ver comandos disponibles del chat
-chat-help:
-    @echo "📖 Comandos disponibles para el chat CLI:"
-    @echo "  just chat              - Iniciar chat genérico (recomendado)"
-    @echo "  just chat-test         - Probar chat genérico"
-    @echo ""
-    @echo "Comandos dentro del chat:"
-    @echo "  'salir' o 'exit'       - Salir del chat"
-    @echo "  'limpiar' o 'clear'    - Limpiar pantalla"
-    @echo "  'historial'            - Ver historial reciente"
-    @echo "  'ayuda'                - Ver ayuda del asistente"
-    @echo "  'herramientas'         - Ver herramientas disponibles"
+# Verificar entornos
+check:
+    @echo "=== Python Version ==="
+    {{VENV_CHAT}}/bin/python --version
+    {{VENV_WEATHER}}/bin/python --version
+    {{VENV_ORQUESTADOR}}/bin/python --version

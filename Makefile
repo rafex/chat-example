@@ -1,64 +1,68 @@
-# Makefile - Build System para Agente Meteorológico
-# Segrega configuración de build y tareas de ejecución
+# Makefile para construcción de proyectos Python
+# Responsabilidad única: Build system (construcción y preparación)
 
-.PHONY: help install test lint format clean build
+.PHONY: all venv install check-python clean build-project
 
-# Variables
-PYTHON := python3
-PROJECT_DIR := poc/agent-weather
-VENV_DIR := poc/agent-weather/venv
-VENV_ACTIVATE := $(VENV_DIR)/bin/activate
-PIP := $(VENV_DIR)/bin/pip
-PYTEST := $(VENV_DIR)/bin/pytest
+# Configuración
+PYTHON := python3.14
+PROJECTS := poc/agent-weather poc/agent-orquestador poc/chatCLI
 
-# Colores para output
-GREEN := \033[0;32m
-NC := \033[0m # No Color
-
-help:
-	@echo "Uso: make <target>"
+# Por defecto: construir todos los proyectos
+.PHONY: all
+all: check-python
+	@echo "Construyendo todos los proyectos..."
+	@for project in $(PROJECTS); do \
+		echo ""; \
+		echo "=== Construyendo $$project ==="; \
+		$(MAKE) -C $$project venv install || exit 1; \
+	done
 	@echo ""
-	@echo "Targets:"
-	@echo "  install    Instalar dependencias en entorno virtual"
-	@echo "  test       Ejecutar suite de pruebas"
-	@echo "  lint       Verificar estilo de código"
-	@echo "  format     Formatear código"
-	@echo "  clean      Limpiar artefactos"
-	@echo "  build      Preparar para distribución"
+	@echo "✅ Todos los proyectos construidos exitosamente"
 
-install: $(VENV_ACTIVATE)
+# Verificar que Python 3.14 esté disponible
+.PHONY: check-python
+check-python:
+	@echo "Verificando Python 3.14..."
+	@if ! command -v $(PYTHON) >/dev/null 2>&1; then \
+		echo "Error: Python 3.14 no encontrado."; \
+		echo "Intentando detectar Homebrew en macOS..."; \
+		if command -v brew >/dev/null 2>&1; then \
+			BREW_PYTHON=$$(brew list python@3.14 --versions 2>/dev/null | head -n 1); \
+			if [ -n "$$BREW_PYTHON" ]; then \
+				echo "Python 3.14 detectado via Homebrew."; \
+			else \
+				echo "Python 3.14 no instalado via Homebrew. Ejecuta: brew install python@3.14"; \
+				exit 1; \
+			fi; \
+		else \
+			echo "Homebrew no detectado. Instala Python 3.14 manualmente."; \
+			exit 1; \
+		fi; \
+	fi
+	@echo "Python 3.14 OK: $$($(PYTHON) --version)"
 
-$(VENV_ACTIVATE):
-	@echo "$(GREEN)Creando entorno virtual...$(NC)"
-	$(PYTHON) -m venv $(VENV_DIR)
-	@echo "$(GREEN)Instalando dependencias...$(NC)"
-	$(PIP) install -r $(PROJECT_DIR)/requirements.txt
-	@touch $(VENV_ACTIVATE)
+# Construir un proyecto específico
+.PHONY: build-project
+build-project:
+	@if [ -z "$(PROJECT)" ]; then \
+		echo "Error: Debes especificar PROJECT=poc/agent-weather|poc/agent-orquestador|poc/chatCLI"; \
+		exit 1; \
+	fi
+	@echo "Construyendo proyecto: $(PROJECT)"
+	$(MAKE) -C $(PROJECT) venv install
 
-test: install
-	@echo "$(GREEN)Ejecutando pruebas...$(NC)"
-	cd $(PROJECT_DIR) && venv/bin/pytest src/tests/ -v --tb=short
-
-lint:
-	@echo "$(GREEN)Verificando estilo de código...$(NC)"
-	cd $(PROJECT_DIR) && venv/bin/python -m flake8 src/ || true
-	cd $(PROJECT_DIR) && venv/bin/python -m py_compile src/**/*.py || true
-
-format:
-	@echo "$(GREEN)Formateando código...$(NC)"
-	cd $(PROJECT_DIR) && venv/bin/python -m black src/ --line-length 88 || true
-	cd $(PROJECT_DIR) && venv/bin/python -m isort src/ || true
-
+# Limpiar todos los entornos
+.PHONY: clean
 clean:
-	@echo "$(GREEN)Limpiando artefactos...$(NC)"
-	rm -rf $(VENV_DIR)
-	rm -rf .pytest_cache
-	rm -rf $(PROJECT_DIR)/src/__pycache__
-	rm -rf $(PROJECT_DIR)/src/**/__pycache__
-	find $(PROJECT_DIR) -name "*.pyc" -delete
-	find $(PROJECT_DIR) -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
-
-build:
-	@echo "$(GREEN)Preparando distribución...$(NC)"
-	@echo "Versión: $(shell date +%Y%m%d)"
-	@echo "El proyecto está listo para distribución"
+	@echo "Limpiando entornos virtuales..."
+	@for project in $(PROJECTS); do \
+		if [ -d "$$project/venv" ]; then \
+			echo "Eliminando $$project/venv"; \
+			rm -rf $$project/venv; \
+		fi; \
+	done
+	@echo "Limpiando cachés de Python..."
+	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	find . -type f -name "*.pyc" -delete 2>/dev/null || true
+	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
+	@echo "✅ Limpieza completada"

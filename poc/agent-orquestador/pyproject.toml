@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-orquestador"
+version = "0.1.0"
+description = "Agente orquestador para sistema de herramientas con LangGraph"
+readme = "README.md"
+requires-python = ">=3.14"
+license = {text = "MIT"}
+authors = [
+    {name = "Team", email = "team@example.com"}
+]
+dependencies = [
+    "langgraph==1.1.6",
+    "langchain-core>=1.2.0",
+    "pydantic==2.12.5",
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0",
+    "numpy>=2.0.0",
+    "faiss-cpu>=1.8.0",
+    "tomli>=2.0.0",
+    "openai>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "isort>=5.0.0",
+    "flake8>=6.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["orquestador*"]
+
+[tool.black]
+line-length = 88
+target-version = ['py314']
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.pytest.ini_options]
+testpaths = ["src/tests"]
+pythonpath = ["src"]
