@@ -75,6 +75,18 @@
 - [x] Integrar agente orquestador en Chat CLI
 - [x] Probar integración completa
 - [x] Crear documentación del agente orquestador
+- [x] Agregar configuración TOML para prompts
+- [x] Refactorizar Chat CLI para ser solo interfaz
+
+## ✅ TAREAS PENDIENTES COMPLETADAS RECIENTEMENTE
+
+### Configuración y Refactorización
+- [x] **Mover .env a poc/** para uso compartido entre agentes
+- [x] **Agregar configuración TOML** para prompts del agente orquestador
+- [x] **Refactorizar Chat CLI** para ser solo interfaz de entrada/salida
+- [x] **Delegar inferencia LLM** completamente al agente orquestador
+- [x] **Soporte para 3 proveedores LLM** (OpenAI, DeepSeek, OpenRouter)
+- [x] **Comando /model** para cambiar proveedores dinámicamente
 
 ## ✅ ESTADO ACTUAL DEL PROYECTO
 
