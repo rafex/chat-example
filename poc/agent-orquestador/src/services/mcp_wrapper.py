@@ -26,7 +26,7 @@ except ImportError:
 
 def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
     """
-    Ejecuta una herramienta MCP
+    Ejecuta una herramienta MCP con validación
     
     Args:
         tool_name: Nombre de la herramienta
@@ -41,6 +41,19 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
             "error": "MCP Router no disponible",
             "tool_used": tool_name,
             "response": ""
+        }
+    
+    # Validar que la herramienta existe
+    available_tools = list_mcp_tools()
+    available_tool_names = [tool.get('name', '') for tool in available_tools]
+    
+    if tool_name not in available_tool_names:
+        return {
+            "success": False,
+            "error": f"La herramienta '{tool_name}' no existe",
+            "available_tools": available_tool_names,
+            "tool_used": tool_name,
+            "response": f"❌ La herramienta '{tool_name}' no está disponible. Herramientas disponibles: {', '.join(available_tool_names)}"
         }
     
     try:
@@ -90,14 +103,14 @@ def execute_mcp_tool(tool_name: str, arguments: dict) -> dict:
                 "success": False,
                 "error": "Respuesta inválida del MCP",
                 "tool_used": tool_name,
-                "response": ""
+                "response": f"❌ Error al ejecutar '{tool_name}': Respuesta inválida del servidor MCP"
             }
     except Exception as e:
         return {
             "success": False,
             "error": str(e),
             "tool_used": tool_name,
-            "response": ""
+            "response": f"❌ Error ejecutando '{tool_name}': {str(e)}"
         }
 
 

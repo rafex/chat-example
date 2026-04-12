@@ -126,17 +126,35 @@ class AgentOrquestador:
         # Añadir instrucciones del sistema
         available_tools = "\n".join([f"- {tool}" for tool in self.mcp_tool_names])
         
+        # Obtener detalles de herramientas MCP con parámetros
+        mcp_tools_details = []
+        for tool in self.mcp_tools:
+            tool_name = tool.get('name', '')
+            tool_params = tool.get('parameters', {})
+            params_str = ""
+            if tool_params:
+                if isinstance(tool_params, dict):
+                    params_str = ", ".join([f"{k}={k}" for k in tool_params.keys()])
+                elif isinstance(tool_params, list):
+                    params_str = ", ".join(tool_params)
+            mcp_tools_details.append(f"- {tool_name}({params_str})")
+        
         system_prompt = f"""Eres un asistente inteligente que analiza la intención del usuario y decide qué herramienta usar.
 
+⚠️  REGLA DE ORO: Usa SOLO las herramientas listadas aquí. NUNCA inventes nombres de herramientas.
+
 HERRAMIENTAS DISPONIBLES:
-- Agente Meteorológico: Para consultas de clima
+- Agente Meteorológico: Para consultas de clima (ej: "¿Qué tiempo hace en Madrid?")
 {available_tools}
 - Chat Genérico: Para conversación general
+
+DETALLES DE HERRAMIENTAS MCP:
+{chr(10).join(mcp_tools_details) if mcp_tools_details else "No hay herramientas MCP disponibles"}
 
 INSTRUCCIONES:
 1. Identifica la intención del usuario
 2. Determina qué herramienta usar: "weather", "mcp", o "chat"
-3. Si es "mcp", especifica el nombre de la herramienta
+3. Si es "mcp", usa SOLO los nombres de herramientas listados arriba
 4. Extrae argumentos relevantes (como ubicación para clima, nombre para saludos, etc.)
 5. Devuelve un JSON con la siguiente estructura:
 {{
@@ -172,6 +190,9 @@ Usuario: "Hola, ¿cómo estás?"
   "arguments": {{}},
   "confidence": 0.8
 }}
+
+IMPORTANTE: Si el usuario pide múltiples idiomas y no hay herramienta multilingüe,
+responde usando la herramienta existente apropiadamente. NO inventes herramientas.
 
 Devuelve solo el JSON, sin texto adicional:
 """
