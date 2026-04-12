@@ -1,23 +1,28 @@
 #!/usr/bin/env python3
 """
 Chat CLI Interactivo Genérico con Herramientas y Memoria Temporal (FAISS)
-
-Este chat permite:
-1. Conversación general con el LLM
-2. Consultas de clima usando la herramienta get_weather
-3. Memoria temporal de conversación usando FAISS (mientras la sesión está abierta)
 """
 
 import sys
 import os
 import uuid
 import json
-import numpy as np
-import faiss
 import re
 from collections import Counter
 
-# Intentar importar SentenceTransformer, fallback si falla
+# Sentencias try/except para importaciones opcionales
+try:
+    import numpy as np
+except ImportError:
+    print("⚠️  numpy no disponible, algunas funcionalidades pueden fallar")
+    np = None
+
+try:
+    import faiss
+except ImportError:
+    print("⚠️  faiss no disponible, memoria FAISS no funcionará")
+    faiss = None
+
 try:
     from sentence_transformers import SentenceTransformer
     SENTENCE_TRANSFORMERS_AVAILABLE = True
@@ -27,50 +32,91 @@ except ImportError as e:
     SentenceTransformer = None
     SENTENCE_TRANSFORMERS_AVAILABLE = False
 
+# ==============================================================================
+# CONFIGURACIÓN DE PATHS
+# ==============================================================================
+
+# El directorio donde está este archivo
+current_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Añadir el directorio src de chatCLI al path (esto permite importar desde agents, schemas, etc.)
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
 # Configurar paths para importar desde poc/agent-weather y lib/mcp
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-agent_weather_path = os.path.join(project_root, 'poc', 'agent-weather')
-lib_path = os.path.join(project_root, 'lib')
-sys.path.insert(0, agent_weather_path)
-sys.path.insert(0, lib_path)
-
-# Importar desde poc/agent-weather
-from src.schemas.chat import ChatSession, MessageType, Message
-from src.services.generic_chat_service import GenericChatService  # Mantener como fallback
-from src.config import Config  # Importar Config para cambiar proveedores
-
-# Importar agente orquestador
-# chat_cli.py está en: poc/chatCLI/src/chat_cli.py
-# Project root es: agentes-con-LangGraph (3 niveles arriba de src)
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-orquestador_src = os.path.join(project_root, 'poc', 'agent-orquestador', 'src')
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_dir))))
 agent_weather_src = os.path.join(project_root, 'poc', 'agent-weather', 'src')
+lib_path = os.path.join(project_root, 'lib')
 
-# Añadir paths del agente orquestador
-sys.path.insert(0, orquestador_src)
-sys.path.insert(0, os.path.join(orquestador_src, 'agents'))
-sys.path.insert(0, os.path.join(orquestador_src, 'schemas'))
-sys.path.insert(0, os.path.join(orquestador_src, 'services'))
-sys.path.insert(0, agent_weather_src)
-sys.path.insert(0, os.path.join(agent_weather_src, 'services'))
-sys.path.insert(0, os.path.join(agent_weather_src, 'schemas'))
+if agent_weather_src not in sys.path:
+    sys.path.insert(0, agent_weather_src)
+if lib_path not in sys.path:
+    sys.path.insert(0, lib_path)
 
+# ==============================================================================
+# IMPORTACIONES DESDE AGENT-WEATHER
+# ==============================================================================
 try:
-    from orquestador_agent import run_orquestador
+    from src.schemas.chat import ChatSession, MessageType, Message
+    from src.services.generic_chat_service import GenericChatService
+    from src.config import Config
+    print("✅ Importaciones de agent-weather exitosas")
+except ImportError as e:
+    print(f"⚠️  Error importando agent-weather: {e}")
+    # Crear clases básicas como fallback
+    class MessageType:
+        USER = "user"
+        ASSISTANT = "assistant"
+        SYSTEM = "system"
+    
+    class Message:
+        def __init__(self, type, content):
+            self.type = type
+            self.content = content
+            self.timestamp = None
+    
+    class ChatSession:
+        def __init__(self, id):
+            self.id = id
+            self.messages = []
+        
+        def add_message(self, msg_type, content):
+            self.messages.append(Message(msg_type, content))
+
+# ==============================================================================
+# IMPORTACIÓN DEL AGENTE ORQUESTADOR
+# ==============================================================================
+
+# Importar desde el directorio src de chatCLI (donde están los módulos copiados)
+try:
+    from agents.orquestador_agent import run_orquestador, tool_registry
     ORQUESTADOR_AVAILABLE = True
     print("✅ Agente orquestador importado exitosamente")
+    print(f"   Herramientas disponibles: {len(tool_registry.list_tools())}")
 except ImportError as e:
     ORQUESTADOR_AVAILABLE = False
     print(f"⚠️  Agente orquestador no disponible: {e}")
+    
+    # Intentar fallback a agente meteorológico directo
     try:
         from src.agents.weather_agent import run_weather_agent
         print("✅ Usando agente meteorológico directo")
     except ImportError as e2:
-        print(f"❌ Error importando agente meteorológico: {e2}")
+        print(f"⚠️  Error importando agente meteorológico: {e2}")
+        run_weather_agent = None
 
 # Importar MCP Router
-from mcp.router import MCPRouter
+try:
+    from mcp.router import MCPRouter
+    MCP_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️  MCP Router no disponible: {e}")
+    MCP_AVAILABLE = False
+    MCPRouter = None
 
+# ==============================================================================
+# CÓDIGO PRINCIPAL DEL CHAT
+# ==============================================================================
 
 class MemoryManager:
     """Gestor de memoria temporal usando FAISS con embeddings preentrenados"""
@@ -93,7 +139,10 @@ class MemoryManager:
             self.dimension = 256
         
         # Crear índice FAISS en memoria (no se guarda en disco)
-        self.index = faiss.IndexFlatL2(self.dimension)
+        if faiss is not None:
+            self.index = faiss.IndexFlatL2(self.dimension)
+        else:
+            self.index = None
         
         # Almacenar textos y vectores
         self.texts = []
@@ -131,14 +180,18 @@ class MemoryManager:
         word_counts = Counter(words)
         
         # Crear vector
-        vector = np.zeros(self.dimension)
-        
-        # Asignar índices a palabras basado en frecuencia global
-        for i, (word, count) in enumerate(word_counts.most_common(self.dimension)):
-            if i < self.dimension:
-                # Usar hash simple para mapear palabra a índice
-                idx = hash(word) % self.dimension
-                vector[idx] = count
+        if np is not None:
+            vector = np.zeros(self.dimension)
+            
+            # Asignar índices a palabras basado en frecuencia global
+            for i, (word, count) in enumerate(word_counts.most_common(self.dimension)):
+                if i < self.dimension:
+                    # Usar hash simple para mapear palabra a índice
+                    idx = hash(word) % self.dimension
+                    vector[idx] = count
+        else:
+            # Fallback si numpy no está disponible
+            vector = [0] * self.dimension
         
         return vector
     
@@ -151,7 +204,8 @@ class MemoryManager:
         vector = self._text_to_vector(text)
         
         # Agregar al índice FAISS
-        self.index.add(np.array([vector], dtype=np.float32))
+        if self.index is not None and np is not None:
+            self.index.add(np.array([vector], dtype=np.float32))
         
         # Guardar texto con metadata
         self.texts.append({
@@ -165,7 +219,7 @@ class MemoryManager:
     
     def search(self, query: str, k: int = 3):
         """Buscar mensajes similares a la consulta"""
-        if len(self.texts) == 0:
+        if len(self.texts) == 0 or self.index is None or np is None:
             return []
         
         # Generar vector de la consulta
@@ -191,7 +245,8 @@ class MemoryManager:
     
     def clear(self):
         """Limpiar toda la memoria"""
-        self.index = faiss.IndexFlatL2(self.dimension)
+        if faiss is not None:
+            self.index = faiss.IndexFlatL2(self.dimension)
         self.texts = []
         self.vectors = []
         self.word_counter = Counter()
@@ -220,8 +275,11 @@ def print_banner():
 
 def format_message(msg):
     """Formatear mensaje para mostrar en consola"""
-    timestamp = msg.timestamp.strftime("%H:%M:%S")
-
+    if hasattr(msg, 'timestamp') and msg.timestamp:
+        timestamp = msg.timestamp.strftime("%H:%M:%S")
+    else:
+        timestamp = ""
+    
     if msg.type == MessageType.USER:
         return f"\n👤 TÚ [{timestamp}]: {msg.content}"
     elif msg.type == MessageType.ASSISTANT:
@@ -241,9 +299,23 @@ def main():
         # Inicializar sesión, servicio de chat, memoria temporal y router MCP
         session_id = str(uuid.uuid4())[:8]
         chat_session = ChatSession(id=session_id)
-        chat_service = GenericChatService()
-        memory = MemoryManager()
-        mcp_router = MCPRouter()
+        
+        # Inicializar memoria (manejar caso donde FAISS no esté disponible)
+        if faiss is not None:
+            memory = MemoryManager()
+        else:
+            print("⚠️  FAISS no disponible, memoria semántica deshabilitada")
+            memory = None
+        
+        # Inicializar MCP router si está disponible
+        mcp_router = None
+        if MCP_AVAILABLE and MCPRouter is not None:
+            try:
+                mcp_router = MCPRouter()
+                print(f"✅ Servidor MCP inicializado")
+            except Exception as e:
+                print(f"⚠️  Error inicializando MCP: {e}")
+                mcp_router = None
 
         print(f"\n💡 Sesión iniciada: {session_id}")
         print("💡 Escribe 'salir' o 'exit' para terminar")
@@ -280,7 +352,8 @@ def main():
                     )
                     chat_session.add_message(goodbye_msg.type, goodbye_msg.content)
                     print(format_message(goodbye_msg))
-                    memory.clear()  # Limpiar memoria al salir
+                    if memory:
+                        memory.clear()
                     break
 
                 if user_input.lower() in ['limpiar', 'clear', 'cls']:
@@ -297,9 +370,11 @@ def main():
 
                 if user_input.lower() in ['herramientas', 'tools']:
                     print("\n🔧 HERRAMIENTAS DISPONIBLES:")
-                    print("• get_weather(location): Consulta el clima de una ciudad")
-                    print("• say_hello(name, lang): Saludo personalizado en diferentes idiomas")
-                    print("• get_hello_languages(): Obtener idiomas soportados")
+                    if ORQUESTADOR_AVAILABLE:
+                        for tool in tool_registry.list_tools():
+                            print(f"• {tool.name}: {tool.description}")
+                    else:
+                        print("• get_weather(location): Consulta el clima de una ciudad")
                     continue
 
                 if user_input.lower() in ['ayuda', 'help']:
@@ -333,13 +408,16 @@ def main():
                     try:
                         command = user_input[4:].strip()
                         if command == 'list-tools':
-                            request = {"method": "tools/list", "id": 1}
-                            response = mcp_router.handle_request(request)
-                            if response and 'result' in response:
-                                tools = response['result'].get('tools', [])
-                                print("\n🔧 Herramientas MCP disponibles:")
-                                for tool in tools:
-                                    print(f"• {tool['name']}: {tool.get('description', 'Sin descripción')}")
+                            if mcp_router:
+                                request = {"method": "tools/list", "id": 1}
+                                response = mcp_router.handle_request(request)
+                                if response and 'result' in response:
+                                    tools = response['result'].get('tools', [])
+                                    print("\n🔧 Herramientas MCP disponibles:")
+                                    for tool in tools:
+                                        print(f"• {tool['name']}: {tool.get('description', 'Sin descripción')}")
+                            else:
+                                print("❌ MCP Router no disponible")
                         else:
                             print("Comando MCP no reconocido. Usa 'mcp list-tools' para ver herramientas disponibles.")
                     except Exception as e:
@@ -372,46 +450,50 @@ def main():
                                     "arguments": params
                                 }
                             }
-                            response = mcp_router.handle_request(request)
-                            
-                            if response and 'result' in response:
-                                content = response['result']['content'][0]['text']
-                                result_data = json.loads(content)
-                                message = result_data.get('message', 'Saludo ejecutado')
+                            if mcp_router:
+                                response = mcp_router.handle_request(request)
                                 
-                                # Mostrar resultado
-                                print(f"\n🔧 Resultado MCP: {message}")
-                                
-                                # Agregar al historial
-                                assistant_msg = Message(
-                                    type=MessageType.ASSISTANT,
-                                    content=message
-                                )
-                                chat_session.add_message(MessageType.USER, user_input)
-                                chat_session.add_message(assistant_msg.type, assistant_msg.content)
-                                memory.add_message(message, 'assistant')
-                                print(format_message(assistant_msg))
-                                continue
+                                if response and 'result' in response:
+                                    content = response['result']['content'][0]['text']
+                                    result_data = json.loads(content)
+                                    message = result_data.get('message', 'Saludo ejecutado')
+                                    
+                                    # Mostrar resultado
+                                    print(f"\n🔧 Resultado MCP: {message}")
+                                    
+                                    # Agregar al historial
+                                    assistant_msg = Message(
+                                        type=MessageType.ASSISTANT,
+                                        content=message
+                                    )
+                                    chat_session.add_message(MessageType.USER, user_input)
+                                    chat_session.add_message(assistant_msg.type, assistant_msg.content)
+                                    if memory:
+                                        memory.add_message(message, 'assistant')
+                                    print(format_message(assistant_msg))
+                                    continue
                     except Exception as e:
                         print(f"\n❌ Error ejecutando comando MCP: {e}")
                         continue
 
                 # Agregar mensaje del usuario a la memoria
-                memory.add_message(user_input, 'user')
+                if memory:
+                    memory.add_message(user_input, 'user')
 
                 # Buscar contexto relevante en la memoria
-                context_results = memory.search(user_input)
-                context_text = ""
-                if context_results:
-                    context_text = "\n".join([f"- {r['text']}" for r in context_results])
-                    print(f"\n🧠 Contexto recuperado de la memoria:\n{context_text}")
+                if memory:
+                    context_results = memory.search(user_input)
+                    context_text = ""
+                    if context_results:
+                        context_text = "\n".join([f"- {r['text']}" for r in context_results])
+                        print(f"\n🧠 Contexto recuperado de la memoria:\n{context_text}")
 
                 # Ejecutar agente orquestador (siempre disponible si el Chat CLI se ejecuta correctamente)
                 if ORQUESTADOR_AVAILABLE:
                     try:
                         # Preparar historial para el agente orquestador
                         conversation_history = [
-                            {"role": msg.type.value, "content": msg.content}
+                            {"role": msg.type if isinstance(msg.type, str) else msg.type.value, "content": msg.content}
                             for msg in chat_session.messages
                         ]
                         
@@ -428,8 +510,28 @@ def main():
                         response_text = f"❌ Error crítico en agente orquestador: {str(e)}"
                         print(f"\n{response_text}")
                 else:
-                    # Si el agente orquestador no está disponible, el Chat CLI no puede funcionar
-                    response_text = "❌ Agente orquestador no disponible. El Chat CLI requiere el agente orquestador para funcionar."
+                    # Si el agente orquestador no está disponible, usar agente meteorológico directo
+                    if run_weather_agent:
+                        try:
+                            result = run_weather_agent(user_input)
+                            if result.get('success'):
+                                analysis = result.get('analysis')
+                                if analysis:
+                                    response_text = f"🌞 Clima en {analysis['location']}:\n"
+                                    response_text += f"   - Temperatura: {analysis.get('temperature_celsius', 'N/A')}°C\n"
+                                    response_text += f"   - Condición: {analysis.get('condition', 'N/A')}\n"
+                                    if 'recommendations' in result:
+                                        response_text += "\n💡 Recomendaciones:\n"
+                                        for rec in result['recommendations']:
+                                            response_text += f"   - {rec}\n"
+                                else:
+                                    response_text = "No se pudo obtener el clima."
+                            else:
+                                response_text = "No tengo acceso a esa capacidad en esta versión."
+                        except Exception as e:
+                            response_text = f"❌ Error: {str(e)}"
+                    else:
+                        response_text = "❌ Agente orquestador no disponible. El Chat CLI requiere el agente orquestador para funcionar."
                     print(f"\n{response_text}")
 
                 # Crear mensaje del asistente
@@ -443,14 +545,16 @@ def main():
                 chat_session.add_message(assistant_msg.type, assistant_msg.content)
 
                 # Agregar respuesta del asistente a la memoria
-                memory.add_message(response_text, 'assistant')
+                if memory:
+                    memory.add_message(response_text, 'assistant')
 
                 # Mostrar respuesta
                 print(format_message(assistant_msg))
 
             except KeyboardInterrupt:
                 print("\n\n👋 Saliendo del chat...")
-                memory.clear()
+                if memory:
+                    memory.clear()
                 break
             except Exception as e:
                 error_msg = Message(

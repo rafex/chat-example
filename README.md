@@ -48,10 +48,32 @@ just install
 
 ### Configuración
 
-1. Copia la plantilla de variables de entorno:
-```bash
-cp poc/.env.example poc/.env
-```
+1.  **Instalar Python 3.14**: Asegúrate de tener Python 3.14 o superior instalado en tu sistema.
+    ```bash
+    # Ejemplo de instalación en macOS con Homebrew
+    brew install python@3.14
+    ```
+2.  **Entorno Virtual**: Crea y activa un entorno virtual para aislar las dependencias del proyecto.
+    ```bash
+    python3.14 -m venv venv
+    source venv/bin/activate
+    ```
+3.  **Instalar Dependencias**: Instala las dependencias del proyecto.
+    ```bash
+    make install
+    # o
+    just install
+    ```
+4.  **Variables de Entorno**: Copia la plantilla y configura tus claves de API en `poc/.env`.
+    ```bash
+    cp poc/.env.example poc/.env
+    ```
+    Configura las siguientes variables en `poc/.env`:
+    - `OPENWEATHER_API_KEY`: Tu clave de API de OpenWeatherMap.
+    - `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`: Claves para los LLMs (según el proveedor seleccionado).
+    - `CURRENT_LLM_PROVIDER`: Define el LLM por defecto (`deepseek`, `openai`, `openrouter`).
+5.  **Logger Estructurado**: La configuración del logger está integrada y lista para usarse. Los logs se generarán automáticamente en un formato estructurado para facilitar el análisis y la depuración.
+
 
 2. Configura las API Keys en `poc/.env`:
    - `OPENWEATHER_API_KEY`: Clave de OpenWeatherMap (obtenla en https://openweathermap.org/api)
@@ -83,26 +105,43 @@ python src/chat_cli.py
 - `ayuda`: Mostrar todos los comandos
 - `salir`: Terminar la conversación
 
-### Ejemplos de uso
+### Ejemplos de Uso
 
-```
-Usuario: "¿Cómo está el clima en Madrid?"
-Asistente: Consulta el clima de Madrid y genera recomendaciones
+El `chatCLI` integrado permite interactuar directamente con el agente orquestador.
 
-Usuario: "say_hello(name=Juan, lang=es)"
-Asistente: Saluda a Juan en español
+**Escenarios comunes:**
 
-Usuario: "/model openai"
-Asistente: Cambia a proveedor OpenAI
+1.  **Consulta de Clima**:
+    ```
+    Usuario: "¿Cómo está el clima en Madrid?"
+    Asistente: El agente orquestador detecta la intención, utiliza la herramienta `weather.get_current_weather` y proporciona el pronóstico actual.
+    ```
+2.  **Uso de Herramientas MCP**:
+    ```
+    Usuario: "say_hello(name=Juan, lang=es)"
+    Asistente: El orquestador identifica la llamada a una herramienta MCP y ejecuta `mcp.say_hello`, respondiendo "Hola Juan".
+    ```
+3.  **Interacción Conversacional y Memoria**:
+    ```
+    Usuario: "hola, me llamo Carlos y vivo en Barcelona"
+    Asistente: El sistema registra esta información en la memoria conversacional y semántica.
+    Usuario: "¿Cuál es la capital de España?"
+    Asistente: El agente utiliza su conocimiento general o la memoria para responder "Madrid".
+    ```
+4.  **Cambio de LLM**:
+    ```
+    Usuario: "/model openai"
+    Asistente: El `chatCLI` actualiza la configuración para usar el modelo de OpenAI.
+    ```
+5.  **Comandos del Chat CLI**:
+    - `/model [openai|deepseek|openrouter]`: Cambiar proveedor LLM.
+    - `mcp list-tools`: Listar herramientas MCP disponibles.
+    - `historial`: Ver historial de la sesión.
+    - `herramientas`: Ver todas las herramientas registradas y disponibles.
+    - `limpiar`: Limpiar la pantalla.
+    - `ayuda`: Mostrar todos los comandos disponibles.
+    - `salir`: Terminar la conversación.
 
-Usuario: "hola, me llamo Carlos y vivo en Barcelona"
-Asistente: Recuerda el nombre y ubicación del usuario
-```
-
-2. Edita `poc/agent-weather/.env` con tu API Key de OpenWeatherMap:
-```bash
-OPENWEATHER_API_KEY=tu_api_key_aqui
-```
 
 ### Ejecución
 
@@ -130,13 +169,20 @@ python3 -c "from src.agents.weather_agent import run_weather_agent; print(run_we
 
 ## Tecnologías
 
-- **LangGraph**: Orquestación de grafos de estado para el agente
-- **DeepSeek**: LLM open source para generación de recomendaciones conversacionales
-- **Pydantic**: Validación y modelos de datos
-- **Requests**: Cliente HTTP para OpenWeatherMap
-- **Python-dotenv**: Gestión de variables de entorno
-- **pytest**: Framework de pruebas
-- **OpenAI SDK**: Cliente para APIs compatibles (usado con DeepSeek)
+- **LangGraph 1.1.6**: Orquestación avanzada de grafos de estado para la toma de decisiones del agente.
+- **Python 3.14**: Entorno de ejecución recomendado.
+- **Arquitectura de Orquestación**:
+    - **ToolRegistry**: Registro centralizado y determinista de todas las herramientas disponibles.
+    - **DecisionValidator**: Valida rigurosamente las decisiones del LLM antes de la ejecución.
+- **Memoria Semántica y Conversacional**:
+    - **FAISS**: Indexación y recuperación de contexto a largo plazo mediante embeddings.
+    - **Memoria Conversacional**: Mantiene el historial reciente para la continuidad del diálogo.
+- **Logger Estructurado**: Para una observabilidad detallada del flujo del agente y las interacciones.
+- **chatCLI Integrado**: Interfaz de línea de comandos que interactúa directamente con el agente orquestador.
+- **Soporte Multi-LLM**: Configurable para usar DeepSeek, OpenAI, u OpenRouter.
+- **Configuración TOML**: Prompts del agente orquestador y configuraciones de herramientas vía `prompts.toml`.
+- **Agente Meteorológico**: Consulta la API de OpenWeatherMap y genera recomendaciones con LLM.
+- **MCP Router**: Integra herramientas adicionales (saludos multilingües, etc.).
 
 ## Tests
 

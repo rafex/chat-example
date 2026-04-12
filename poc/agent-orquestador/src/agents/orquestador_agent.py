@@ -2,15 +2,17 @@
 Agente Orquestador con LangGraph
 Decide qué herramienta usar según la intención del usuario usando LLM
 """
-
-from typing import TypedDict, Annotated, Sequence, Optional, Literal, Any
+from typing import TypedDict, Annotated, Sequence, Optional, Literal, Any, List
 from langgraph.graph import StateGraph, END, START
+from langgraph.graph.state import CompiledStateGraph
 from datetime import datetime
 import re
 import json
 import sys
 import os
 import tomli
+import uuid
+import time
 
 # Calcular rutas ANTES de cualquier importación
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -29,6 +31,8 @@ paths_to_add = [
     os.path.join(project_root, 'lib'),
     os.path.join(agent_orquestador_src, 'schemas'),
     os.path.join(agent_orquestador_src, 'services'),
+    os.path.join(agent_orquestador_src, 'registry'),
+    os.path.join(agent_orquestador_src, 'validators'),
 ]
 
 for path in paths_to_add:
@@ -39,11 +43,96 @@ try:
     from src.schemas.orquestador import OrquestadorState, IntentAnalysis, ToolExecutionResult, ToolType
     from src.services.weather_agent_wrapper import execute_weather_agent, extract_location_from_text
     from src.services.mcp_wrapper import execute_mcp_tool, list_mcp_tools
-except ImportError as e:
-    # Importar schemas directamente
-    from orquestador import OrquestadorState, IntentAnalysis, ToolExecutionResult, ToolType
-    from weather_agent_wrapper import execute_weather_agent, extract_location_from_text
-    from mcp_wrapper import execute_mcp_tool, list_mcp_tools
+    from src.registry.tool_registry import tool_registry
+    from src.validators.decision_validator import DecisionValidator
+    from src.services.logger import logger
+except ImportError:
+    try:
+        from schemas.orquestador import OrquestadorState, IntentAnalysis, ToolExecutionResult, ToolType
+        from services.weather_agent_wrapper import execute_weather_agent, extract_location_from_text
+        from services.mcp_wrapper import execute_mcp_tool, list_mcp_tools
+        from registry.tool_registry import tool_registry
+        from validators.decision_validator import DecisionValidator
+        from services.logger import logger
+    except ImportError:
+        try:
+            # Fallback para ejecución directa
+            from orquestador import OrquestadorState, IntentAnalysis, ToolExecutionResult, ToolType
+            from weather_agent_wrapper import execute_weather_agent, extract_location_from_text
+            from mcp_wrapper import execute_mcp_tool, list_mcp_tools
+            from tool_registry import tool_registry
+            from decision_validator import DecisionValidator
+            from logger import logger
+        except ImportError as e:
+            raise ImportError(f"No se pudo importar los módulos necesarios: {e}")
+
+
+def _register_tools():
+    """Registra todas las herramientas en el tool_registry"""
+    
+    # Herramienta de clima
+    tool_registry.register(
+        name="weather.get_current_weather",
+        description="Obtiene el clima actual para una ciudad o ubicación",
+        kind="agent",
+        executor=lambda location: execute_weather_agent(location),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "location": {"type": "string", "description": "Ciudad o ubicación"}
+            },
+            "required": ["location"]
+        },
+        output_schema={
+            "type": "object",
+            "properties": {
+                "location": {"type": "string"},
+                "temperature": {"type": "number"},
+                "condition": {"type": "string"}
+            }
+        },
+        available=True,
+        timeout=15
+    )
+    
+    # Herramienta MCP de saludo
+    tool_registry.register(
+        name="mcp.say_hello",
+        description="Saluda personalizado en diferentes idiomas",
+        kind="mcp",
+        executor=lambda name, lang: execute_mcp_tool("say_hello", {"name": name, "lang": lang}),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Nombre de la persona"},
+                "lang": {"type": "string", "description": "Idioma (es, en, fr, etc.)"}
+            },
+            "required": ["name", "lang"]
+        },
+        available=True,
+        timeout=5
+    )
+    
+    # Herramienta chat genérico
+    tool_registry.register(
+        name="chat.respond",
+        description="Responde conversacionalmente al usuario",
+        kind="chat",
+        executor=lambda message: {"response": message},
+        input_schema={
+            "type": "object",
+            "properties": {
+                "message": {"type": "string", "description": "Mensaje de respuesta"}
+            },
+            "required": ["message"]
+        },
+        available=True,
+        timeout=5
+    )
+
+
+# Registrar herramientas al importar el módulo
+_register_tools()
 
 
 class AgentOrquestador:
@@ -54,12 +143,9 @@ class AgentOrquestador:
         agent_weather_root = os.path.join(project_root, 'poc', 'agent-weather')
         agent_weather_src = os.path.join(agent_weather_root, 'src')
         
-        # Para imports como 'from src.config import Config', 
-        # necesitamos que el directorio padre de 'src' esté en sys.path
-        # (es decir, 'poc/agent-weather')
         paths_to_add = [
-            agent_weather_root,  # Permite 'from src.config import Config'
-            agent_weather_src,   # Por si acaso se usa 'from config import Config'
+            agent_weather_root,
+            agent_weather_src,
             os.path.join(agent_weather_src, 'services'),
             os.path.join(agent_weather_src, 'schemas'),
             project_root,
@@ -100,137 +186,14 @@ class AgentOrquestador:
             'saluda', 'decir', 'hablar'
         ]
     
-    def analyze_intent_with_llm(self, user_input: str, history: Sequence[dict[str, str]]) -> IntentAnalysis:
-        """
-        Analiza la intención del usuario usando LLM
-        
-        Args:
-            user_input: Mensaje del usuario
-            history: Historial de conversación
-        
-        Returns:
-            Análisis de intención
-        """
-        if not self.llm_available:
-            return self.analyze_intent_by_rules(user_input, history)
-        
-        # Construir mensajes para el LLM
-        messages = []
-        
-        # Añadir historial
-        for msg in history[-5:]:
-            messages.append({
-                "role": msg.get("role", "user"),
-                "content": msg.get("content", "")
-            })
-        
-        # Añadir instrucciones del sistema
-        # Definir herramientas disponibles (antes de cargar TOML)
-        available_tools = "\n".join([f"- {tool}" for tool in self.mcp_tool_names])
-        
-        # Cargar prompt base desde TOML
-        # project_root apunta a 'poc', la ruta relativa es directamente agent-orquestador
-        config_path = os.path.join(project_root, 'agent-orquestador', 'config', 'prompts.toml')
-        try:
-            with open(config_path, 'rb') as f:
-                config = tomli.load(f)
-                base_prompt = config['system_prompt']['content']
-        except Exception as e:
-            print(f"⚠️  No se pudo cargar prompts.toml: {e}")
-            # Fallback al prompt original
-            base_prompt = """Eres un asistente inteligente que analiza la intención del usuario y decide qué herramienta usar."""
-        
-        # Construir detalles de herramientas MCP
-        mcp_tools_details = []
-        for tool in self.mcp_tools:
-            tool_name = tool.get('name', '')
-            tool_params = tool.get('parameters', {})
-            params_str = ""
-            if tool_params:
-                if isinstance(tool_params, dict):
-                    params_str = ", ".join([f"{k}={k}" for k in tool_params.keys()])
-                elif isinstance(tool_params, list):
-                    params_str = ", ".join(tool_params)
-            mcp_tools_details.append(f"- {tool_name}({params_str})")
-        
-        # Reemplazar variables dinámicas en el prompt
-        system_prompt = base_prompt.format(
-            available_tools=available_tools,
-            mcp_tools_details=chr(10).join(mcp_tools_details) if mcp_tools_details else "No hay herramientas MCP disponibles"
-        )
-        
-        messages.insert(0, {"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": user_input})
-        
-        try:
-            response = self.llm.chat(messages)
-            
-            # Parsear respuesta JSON
-            json_match = re.search(r'\{.*\}', response, re.DOTALL)
-            if json_match:
-                try:
-                    result = json.loads(json_match.group())
-                    
-                    # Validar que result es un diccionario
-                    if not isinstance(result, dict):
-                        return self.analyze_intent_by_rules(user_input, history)
-                    
-                    # Asegurar que tool_name esté en arguments para herramientas MCP
-                    arguments = result.get("arguments")
-                    if arguments is None:
-                        arguments = {}
-                    
-                    if result.get("tool_type") == "mcp" and "tool_name" not in arguments:
-                        # Extraer tool_name del intent o usar el nombre de la herramienta
-                        intent_name = result.get("intent", "")
-                        if intent_name.startswith("mcp_"):
-                            arguments["tool_name"] = intent_name[4:]
-                    
-                    return {
-                        "intent": result.get("intent", "general_chat"),
-                        "confidence": result.get("confidence", 0.7),
-                        "tool_type": result.get("tool_type", "chat"),
-                        "arguments": arguments
-                    }
-                except json.JSONDecodeError:
-                    return self.analyze_intent_by_rules(user_input, history)
-            else:
-                # Si no se encuentra JSON, usar análisis por reglas
-                return self.analyze_intent_by_rules(user_input, history)
-                
-        except Exception:
-            return self.analyze_intent_by_rules(user_input, history)
-    
     def analyze_intent_by_rules(self, user_input: str, history: Sequence[dict[str, str]]) -> IntentAnalysis:
         """
         Analiza la intención del usuario usando reglas (fallback del LLM)
-        
-        Args:
-            user_input: Mensaje del usuario
-            history: Historial de conversación
-        
-        Returns:
-            Análisis de intención
         """
-        # Palabras clave para clima
-        weather_keywords = [
-            'clima', 'weather', 'temperatura', ' temperatura', 'lluvia', 'rain',
-            'sol', 'sun', 'viento', 'wind', 'humedad', 'humidity', 'nieve', 'snow',
-            'nubes', 'clouds', 'amanecer', 'atardecer', 'predicción', 'forecast',
-            'tiempo', 'hace', 'hoy', 'mañana'
-        ]
-        
-        # Palabras clave para MCP
-        mcp_keywords = [
-            'hola', 'hello', 'saludar', 'greet', 'idioma', 'language',
-            'herramienta', 'tool', 'mcp', 'servicio', 'service',
-            'saluda', 'decir', 'hablar'
-        ]
-        
         user_input_lower = user_input.lower()
         
         # Verificar si es consulta de clima
-        weather_match = any(keyword in user_input_lower for keyword in weather_keywords)
+        weather_match = any(keyword in user_input_lower for keyword in self.weather_keywords)
         
         # Verificar si es comando MCP
         mcp_match = any(keyword in user_input_lower for keyword in self.mcp_keywords)
@@ -311,6 +274,66 @@ class AgentOrquestador:
         if self.llm_available:
             return self.analyze_intent_with_llm(user_input, history)
         else:
+            return self.analyze_intent_by_rules(user_input, history)
+    
+    def analyze_intent_with_llm(self, user_input: str, history: Sequence[dict[str, str]]) -> IntentAnalysis:
+        """
+        Analiza la intención del usuario usando LLM
+        """
+        # Construir mensajes para el LLM
+        messages = []
+        
+        # Añadir historial
+        for msg in history[-5:]:
+            messages.append({
+                "role": msg.get("role", "user"),
+                "content": msg.get("content", "")
+            })
+        
+        # Cargar prompt base desde TOML
+        config_path = os.path.join(project_root, 'agent-orquestador', 'config', 'prompts.toml')
+        try:
+            with open(config_path, 'rb') as f:
+                config = tomli.load(f)
+                base_prompt = config['system_prompt']['content']
+        except Exception as e:
+            print(f"⚠️  No se pudo cargar prompts.toml: {e}")
+            # Fallback al prompt original
+            base_prompt = """Eres un asistente inteligente que analiza la intención del usuario y decide qué herramienta usar."""
+        
+        # Obtener herramientas disponibles del registry
+        tools_description = tool_registry.get_tools_prompt_description()
+        
+        # Construir sistema de prompt
+        system_prompt = base_prompt.format(
+            available_tools=tools_description,
+            mcp_tools_details="\n".join([f"- {name}" for name in self.mcp_tool_names])
+        )
+        
+        messages.insert(0, {"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_input})
+        
+        try:
+            response = self.llm.chat(messages)
+            
+            # Parsear respuesta JSON
+            parsed, error = DecisionValidator.parse_llm_response(response)
+            
+            if parsed and not error:
+                # Validar y normalizar la decisión
+                validated = DecisionValidator.sanitize_llm_decision(parsed)
+                
+                return {
+                    "intent": validated.get("intent", "general_chat"),
+                    "confidence": validated.get("confidence", 0.7),
+                    "tool_type": validated.get("tool_type", "chat"),
+                    "arguments": validated.get("arguments", {})
+                }
+            else:
+                # Si hay error, usar análisis por reglas
+                return self.analyze_intent_by_rules(user_input, history)
+                
+        except Exception:
             return self.analyze_intent_by_rules(user_input, history)
     
     def execute_tool(self, intent: IntentAnalysis) -> ToolExecutionResult:
@@ -405,51 +428,349 @@ class AgentOrquestador:
             }
 
 
-# Funciones para LangGraph
+# ==================== LANGGRAPH NODOS ====================
+
+def load_context_node(state: OrquestadorState) -> OrquestadorState:
+    """Nodo: Carga contexto inicial y configura el estado"""
+    new_state = dict(state)
+    
+    # Inicializar session_id y turn_id si no existen
+    if 'session_id' not in new_state or not new_state['session_id']:
+        new_state['session_id'] = str(uuid.uuid4())[:8]
+    
+    if 'turn_id' not in new_state:
+        new_state['turn_id'] = 1
+    else:
+        new_state['turn_id'] = new_state['turn_id'] + 1
+    
+    # Inicializar campos si no existen
+    new_state.setdefault('conversation_history', [])
+    new_state.setdefault('retrieved_memories', [])
+    new_state.setdefault('available_tools', [])
+    new_state.setdefault('errors', [])
+    
+    # Actualizar campos heredados para compatibilidad
+    new_state['user_input'] = new_state.get('user_message', new_state.get('user_input', ''))
+    
+    return new_state
+
+
+def retrieve_memory_node(state: OrquestadorState) -> OrquestadorState:
+    """Nodo: Recupera memoria semántica relevante desde FAISS"""
+    # En una implementación real, esto consultaría FAISS
+    # Por ahora, simulamos recuperación vacía
+    new_state = dict(state)
+    new_state['retrieved_memories'] = []
+    
+    return new_state
+
 
 def analyze_intent_node(state: OrquestadorState) -> OrquestadorState:
-    """Nodo: Analizar intención del usuario"""
+    """Nodo: Analiza intención del usuario"""
     orquestador = AgentOrquestador()
-    intent = orquestador.analyze_intent(state['user_input'], state.get('history', []))
     
-    return {
-        **state,
+    user_message = state.get('user_message', state.get('user_input', ''))
+    history = state.get('conversation_history', [])
+    session_id = state.get('session_id', 'unknown')
+    turn_id = state.get('turn_id', 0)
+    
+    # Medir tiempo de análisis
+    start_time = time.time()
+    intent = orquestador.analyze_intent(user_message, history)
+    latency_ms = (time.time() - start_time) * 1000
+    
+    # Convertir IntentAnalysis a dict para el estado
+    llm_decision = {
         'intent': intent['intent'],
-        'tool_to_use': intent['tool_type'],
-        'tool_args': intent['arguments']
+        'tool_type': intent['tool_type'],
+        'tool_name': None,
+        'arguments': intent['arguments'],
+        'confidence': intent['confidence'],
+        'requires_tool': intent['tool_type'] != 'chat',
+        'reasoning_summary': f"Intención detectada: {intent['intent']}",
+        'missing_arguments': []
     }
+    
+    # Obtener nombre de tool específica si aplica
+    if intent['tool_type'] == 'weather':
+        llm_decision['tool_name'] = 'weather.get_current_weather'
+    elif intent['tool_type'] == 'mcp':
+        tool_name = intent['arguments'].get('tool_name', 'say_hello')
+        llm_decision['tool_name'] = f'mcp.{tool_name}'
+    elif intent['tool_type'] == 'chat':
+        llm_decision['tool_name'] = 'chat.respond'
+    
+    # Registrar decisión del LLM
+    logger.log_llm_decision(
+        session_id=session_id,
+        turn_id=turn_id,
+        user_message=user_message,
+        llm_decision=llm_decision,
+        latency_ms=latency_ms
+    )
+    
+    new_state = dict(state)
+    new_state['llm_decision'] = llm_decision
+    new_state['intent'] = intent['intent']
+    new_state['tool_to_use'] = intent['tool_type']
+    new_state['tool_args'] = intent['arguments']
+    
+    return new_state
+
+
+def validate_decision_node(state: OrquestadorState) -> OrquestadorState:
+    """Nodo: Valida determinísticamente la decisión del LLM"""
+    llm_decision = state.get('llm_decision', {})
+    session_id = state.get('session_id', 'unknown')
+    turn_id = state.get('turn_id', 0)
+    
+    # Validar contra el registry
+    tool_name = llm_decision.get('tool_name')
+    arguments = llm_decision.get('arguments', {})
+    
+    # Medir tiempo de validación
+    start_time = time.time()
+    
+    if tool_name:
+        validation_result = tool_registry.validate_call(tool_name, arguments)
+    else:
+        # No requiere herramienta, validación vacía
+        validation_result = {
+            'valid': True,
+            'tool_name': 'chat',
+            'arguments': arguments,
+            'errors': [],
+            'missing_arguments': []
+        }
+    
+    latency_ms = (time.time() - start_time) * 1000
+    
+    # Convertir ValidationResult a dict
+    validation_dict = {
+        'valid': validation_result.valid,
+        'tool_name': validation_result.tool_name,
+        'arguments': validation_result.arguments,
+        'errors': validation_result.errors,
+        'missing_arguments': validation_result.missing_arguments
+    }
+    
+    # Registrar validación
+    logger.log_tool_validation(
+        session_id=session_id,
+        turn_id=turn_id,
+        tool_name=tool_name or 'chat',
+        valid=validation_result.valid,
+        errors=validation_result.errors,
+        latency_ms=latency_ms
+    )
+    
+    new_state = dict(state)
+    new_state['validation_result'] = validation_dict
+    
+    # Añadir errores al estado si hay
+    if validation_result.errors:
+        new_state['errors'] = state.get('errors', []) + validation_result.errors
+    
+    return new_state
+
+
+def route_request_node(state: OrquestadorState) -> OrquestadorState:
+    """Nodo: Decide si ejecutar herramienta o responder con chat"""
+    validation_result = state.get('validation_result', {})
+    
+    new_state = dict(state)
+    
+    if validation_result.get('valid', False):
+        # Validación exitosa, route según tool_name
+        tool_name = validation_result.get('tool_name', '')
+        
+        if tool_name.startswith('weather.'):
+            new_state['next_node'] = 'execute_tool'
+        elif tool_name.startswith('mcp.'):
+            new_state['next_node'] = 'execute_tool'
+        elif tool_name.startswith('chat.'):
+            new_state['next_node'] = 'generic_chat'
+        else:
+            new_state['next_node'] = 'generic_chat'
+    else:
+        # Validación fallida, usar chat genérico con explicación
+        new_state['next_node'] = 'generic_chat'
+    
+    return new_state
 
 
 def execute_tool_node(state: OrquestadorState) -> OrquestadorState:
-    """Nodo: Ejecutar herramienta seleccionada"""
+    """Nodo: Ejecuta la herramienta real seleccionada"""
     orquestador = AgentOrquestador()
+    session_id = state.get('session_id', 'unknown')
+    turn_id = state.get('turn_id', 0)
     
-    intent = {
-        'intent': state.get('intent', ''),
-        'tool_type': state.get('tool_to_use', 'chat'),
-        'arguments': state.get('tool_args', {})
-    }
+    validation_result = state.get('validation_result', {})
+    tool_name = validation_result.get('tool_name', '')
+    arguments = validation_result.get('arguments', {})
     
-    result = orquestador.execute_tool(intent)
+    # Medir tiempo de ejecución
+    start_time = time.time()
     
-    return {
-        **state,
-        'response': result['response'],
-        'error': None if result['success'] else result['response']
-    }
+    # Ejecutar herramienta
+    if tool_name == 'weather.get_current_weather':
+        location = arguments.get('location')
+        result = execute_weather_agent(location) if location else None
+        
+        if result and result.get('success'):
+            analysis = result.get('analysis')
+            if analysis:
+                response_text = f"🌞 Clima en {analysis['location']}:\n"
+                response_text += f"   - Temperatura: {analysis['temperature_celsius']}°C\n"
+                response_text += f"   - Condición: {analysis['condition']}\n"
+                
+                # Añadir recomendaciones
+                recommendations = result.get('recommendations', [])
+                if recommendations:
+                    response_text += "\n💡 Recomendaciones:\n"
+                    for rec in recommendations:
+                        response_text += f"   - {rec}\n"
+            else:
+                response_text = "❌ No se pudieron obtener datos climáticos."
+        else:
+            response_text = f"❌ Error obteniendo clima: {result.get('error', 'Desconocido')}" if result else "❌ Error desconocido"
+        
+        new_state = dict(state)
+        new_state['tool_result'] = result
+        new_state['final_response'] = response_text
+        
+        # Registrar ejecución
+        latency_ms = (time.time() - start_time) * 1000
+        logger.log_tool_execution(
+            session_id=session_id,
+            turn_id=turn_id,
+            tool_name=tool_name,
+            success=result.get('success', False) if result else False,
+            latency_ms=latency_ms
+        )
+        
+    elif tool_name.startswith('mcp.'):
+        # Extraer tool_name real (quitando prefijo mcp.)
+        mcp_tool = tool_name.split('.', 1)[1]
+        result = execute_mcp_tool(mcp_tool, arguments)
+        
+        if result.get('success'):
+            response_text = result.get('response', 'Operación completada')
+        else:
+            response_text = f"❌ Error en herramienta MCP: {result.get('error', 'Desconocido')}"
+        
+        new_state = dict(state)
+        new_state['tool_result'] = result
+        new_state['final_response'] = response_text
+        
+    else:
+        # Tool desconocida, fallback a chat
+        new_state = dict(state)
+        new_state['final_response'] = "No tengo acceso a esa herramienta específica."
+    
+    return new_state
 
 
-# Construir grafo LangGraph
-builder = StateGraph(OrquestadorState)
+def generic_chat_node(state: OrquestadorState) -> OrquestadorState:
+    """Nodo: Genera respuesta conversacional sin tool"""
+    validation_result = state.get('validation_result', {})
+    errors = state.get('errors', [])
+    
+    # Si hay errores de validación, informar al usuario
+    if errors:
+        response_text = "⚠️ No pude ejecutar la solicitud:\n"
+        for error in errors[-3:]:  # Mostrar últimos 3 errores
+            response_text += f"   - {error}\n"
+        response_text += "\n¿Puedes reformular tu pregunta?"
+    else:
+        # Respuesta genérica
+        response_text = "Entiendo tu consulta. En esta versión del sistema, puedo:\n"
+        response_text += "   - Consultar el clima de una ciudad\n"
+        response_text += "   - Saludarte en diferentes idiomas\n"
+        response_text += "   - Conversar sobre temas generales\n\n"
+        response_text += "¿En qué puedo ayudarte?"
+    
+    new_state = dict(state)
+    new_state['final_response'] = response_text
+    
+    return new_state
 
-builder.add_node("analyze_intent", analyze_intent_node)
-builder.add_node("execute_tool", execute_tool_node)
 
-builder.add_edge(START, "analyze_intent")
-builder.add_edge("analyze_intent", "execute_tool")
-builder.add_edge("execute_tool", END)
+def format_response_node(state: OrquestadorState) -> OrquestadorState:
+    """Nodo: Formatea la respuesta final"""
+    # El formato ya está hecho en los nodos anteriores
+    # Este nodo solo asegura que el formato sea consistente
+    new_state = dict(state)
+    
+    # Actualizar campo 'response' para compatibilidad
+    new_state['response'] = state.get('final_response')
+    
+    return new_state
 
-graph = builder.compile()
+
+def persist_memory_node(state: OrquestadorState) -> OrquestadorState:
+    """Nodo: Persiste información en memoria"""
+    # En una implementación real, esto guardaría en FAISS
+    # Por ahora, solo registramos el turno
+    new_state = dict(state)
+    
+    # Añadir a conversation_history si hay user_message y final_response
+    user_message = state.get('user_message', state.get('user_input', ''))
+    final_response = state.get('final_response', '')
+    
+    if user_message and final_response:
+        history = state.get('conversation_history', [])
+        history.append({'role': 'user', 'content': user_message})
+        history.append({'role': 'assistant', 'content': final_response})
+        new_state['conversation_history'] = history[-10:]  # Mantener últimos 10
+    
+    return new_state
+
+
+# ==================== COMPILACIÓN DEL GRAFO ====================
+
+def build_orquestador_graph() -> CompiledStateGraph:
+    """Construye y compila el grafo LangGraph del orquestador"""
+    builder = StateGraph(OrquestadorState)
+    
+    # Añadir nodos
+    builder.add_node("load_context", load_context_node)
+    builder.add_node("retrieve_memory", retrieve_memory_node)
+    builder.add_node("analyze_intent", analyze_intent_node)
+    builder.add_node("validate_decision", validate_decision_node)
+    builder.add_node("route_request", route_request_node)
+    builder.add_node("execute_tool", execute_tool_node)
+    builder.add_node("generic_chat", generic_chat_node)
+    builder.add_node("format_response", format_response_node)
+    builder.add_node("persist_memory", persist_memory_node)
+    
+    # Definir flujo
+    builder.add_edge(START, "load_context")
+    builder.add_edge("load_context", "retrieve_memory")
+    builder.add_edge("retrieve_memory", "analyze_intent")
+    builder.add_edge("analyze_intent", "validate_decision")
+    builder.add_edge("validate_decision", "route_request")
+    
+    # Condicional en route_request
+    builder.add_conditional_edges(
+        "route_request",
+        lambda state: state.get('next_node', 'generic_chat'),
+        {
+            "execute_tool": "execute_tool",
+            "generic_chat": "generic_chat"
+        }
+    )
+    
+    builder.add_edge("execute_tool", "format_response")
+    builder.add_edge("generic_chat", "format_response")
+    builder.add_edge("format_response", "persist_memory")
+    builder.add_edge("persist_memory", END)
+    
+    return builder.compile()
+
+
+# Compilar el grafo
+graph = build_orquestador_graph()
 
 
 def run_orquestador(user_input: str, history: Optional[Sequence[dict[str, str]]] = None) -> dict:
@@ -467,13 +788,17 @@ def run_orquestador(user_input: str, history: Optional[Sequence[dict[str, str]]]
         history = []
     
     initial_state = {
-        "user_input": user_input,
-        "intent": None,
-        "tool_to_use": None,
-        "tool_args": None,
-        "response": None,
-        "history": history,
-        "error": None
+        "session_id": "",
+        "turn_id": 0,
+        "user_message": user_input,
+        "conversation_history": list(history),
+        "retrieved_memories": [],
+        "available_tools": [],
+        "llm_decision": None,
+        "validation_result": None,
+        "tool_result": None,
+        "final_response": None,
+        "errors": []
     }
     
     try:
@@ -482,11 +807,13 @@ def run_orquestador(user_input: str, history: Optional[Sequence[dict[str, str]]]
         return {
             "success": True,
             "user_input": user_input,
+            "session_id": result.get('session_id'),
+            "turn_id": result.get('turn_id'),
             "intent": result.get('intent'),
             "tool_used": result.get('tool_to_use'),
             "tool_args": result.get('tool_args'),
-            "response": result.get('response'),
-            "error": result.get('error')
+            "response": result.get('final_response'),
+            "error": None
         }
     except Exception as e:
         return {
@@ -498,4 +825,4 @@ def run_orquestador(user_input: str, history: Optional[Sequence[dict[str, str]]]
 
 
 # Exportar para uso directo
-__all__ = ['run_orquestador', 'AgentOrquestador', 'graph']
+__all__ = ['run_orquestador', 'AgentOrquestador', 'graph', 'tool_registry']
