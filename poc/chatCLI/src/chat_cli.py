@@ -28,6 +28,7 @@ sys.path.insert(0, lib_path)
 # Importar desde poc/agent-weather
 from src.schemas.chat import ChatSession, MessageType, Message
 from src.services.generic_chat_service import GenericChatService  # Mantener como fallback
+from src.config import Config  # Importar Config para cambiar proveedores
 
 # Importar agente orquestador
 # chat_cli.py está en: poc/chatCLI/src/chat_cli.py
@@ -285,6 +286,31 @@ def main():
                     print("• get_weather(location): Consulta el clima de una ciudad")
                     print("• say_hello(name, lang): Saludo personalizado en diferentes idiomas")
                     print("• get_hello_languages(): Obtener idiomas soportados")
+                    continue
+
+                if user_input.lower() in ['ayuda', 'help']:
+                    print("\n💡 COMANDOS DISPONIBLES:")
+                    print("• /model [openai|deepseek|openrouter]: Cambiar proveedor LLM")
+                    print("• mcp list-tools: Listar herramientas MCP disponibles")
+                    print("• historial: Ver historial de la sesión")
+                    print("• herramientas: Ver herramientas disponibles")
+                    print("• limpiar: Limpiar pantalla")
+                    print("• salir: Terminar la conversación")
+                    continue
+
+                # Comando para cambiar modelo LLM
+                if user_input.lower().startswith('/model '):
+                    provider = user_input[7:].strip().lower()
+                    if provider in ['openai', 'deepseek', 'openrouter']:
+                        try:
+                            Config.set_provider(provider)
+                            print(f"✅ Proveedor LLM cambiado a: {provider}")
+                            print(f"   Modelo actual: {Config.get_current_config()['model']}")
+                        except Exception as e:
+                            print(f"❌ Error cambiando proveedor: {e}")
+                    else:
+                        print(f"❌Proveedor no reconocido: {provider}")
+                        print("   Usar: /model openai, /model deepseek, o /model openrouter")
                     continue
                 
                 # Comandos MCP directos

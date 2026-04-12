@@ -25,14 +25,15 @@ class LLMProviderService:
     """Servicio para interactuar con proveedores LLM genéricos (compatible con OpenAI)"""
 
     def __init__(self):
-        # Obtener API key usando métodos de Config (con fallback a variables antiguas)
-        api_key = Config.get_llm_api_key()
+        # Obtener configuración del proveedor actual
+        config = Config.get_current_config()
+        
+        api_key = config.get("api_key")
+        api_base = config.get("base_url")
+        model = config.get("model")
+        
         if not api_key:
-            raise ValueError("LLM_PROVIDER_API_KEY no está configurada en variables de entorno")
-
-        # Obtener configuración del LLM
-        api_base = Config.get_llm_api_base()
-        model = Config.get_llm_model()
+            raise ValueError(f"API key no está configurada para el proveedor {Config.CURRENT_LLM_PROVIDER}")
 
         try:
             import os
