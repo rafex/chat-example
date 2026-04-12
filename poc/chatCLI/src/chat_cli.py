@@ -392,7 +392,7 @@ def main():
                     context_text = "\n".join([f"- {r['text']}" for r in context_results])
                     print(f"\n🧠 Contexto recuperado de la memoria:\n{context_text}")
 
-                # Usar agente orquestador si está disponible
+                # Ejecutar agente orquestador (siempre disponible si el Chat CLI se ejecuta correctamente)
                 if ORQUESTADOR_AVAILABLE:
                     try:
                         # Preparar historial para el agente orquestador
@@ -409,80 +409,14 @@ def main():
                             print(f"\n🧠 Agente orquestador: {orquestador_result['tool_used']} -> {orquestador_result['intent']}")
                         else:
                             response_text = orquestador_result['response']
-                            print(f"\n⚠️ Error en agente orquestador, usando fallback: {orquestador_result.get('error')}")
+                            print(f"\n⚠️ Error en agente orquestador: {orquestador_result.get('error')}")
                     except Exception as e:
-                        print(f"\n⚠️ Error ejecutando agente orquestador: {e}")
-                        # Fallback a chat genérico
-                        conversation_history = [
-                            {"role": msg.type.value, "content": msg.content}
-                            for msg in chat_session.messages
-                        ]
-                        conversation_history.append({"role": "user", "content": user_input})
-                        result_chat = chat_service.chat(user_input, conversation_history)
-                        response_text = result_chat['response']
+                        response_text = f"❌ Error crítico en agente orquestador: {str(e)}"
+                        print(f"\n{response_text}")
                 else:
-                    # Fallback: usar lógica anterior
-                    weather_keywords = ['clima', 'weather', 'temperatura', ' temperatura', 'lluvia', 'rain', 'sol', 'sun', 'viento', 'wind', 'humedad', 'humidity']
-                    is_weather_query = any(keyword in user_input.lower() for keyword in weather_keywords)
-                    
-                    if is_weather_query:
-                        # Extraer ubicación del mensaje
-                        location = None
-                        
-                        # Patrones comunes para extraer ubicación
-                        patterns = [
-                            r'en\s+(\w+(?:\s+\w+)*?)\s*(?:\?|\.|$|,)',
-                            r'en\s+(\w+(?:\s+\w+)*?)\s*$',
-                            r'(\bMadrid\b|\bBarcelona\b|\bValencia\b|\bSevilla\b|\bBilbao\b|\bZaragoza\b|\bPalma\b|\bMurcia\b|\bGranada\b|\bAlicante\b)',
-                        ]
-                        
-                        for pattern in patterns:
-                            match = re.search(pattern, user_input, re.IGNORECASE)
-                            if match:
-                                location = match.group(1)
-                                break
-                        
-                        if location:
-                            print(f"\n🌤️ Consultando clima para: {location}")
-                            try:
-                                # Usar el agente meteorológico
-                                weather_result = run_weather_agent(location)
-                                
-                                if weather_result['success']:
-                                    analysis = weather_result['analysis']
-                                    recommendations = weather_result['recommendations']
-                                    
-                                    # Construir respuesta
-                                    response_text = f"🌞 Clima en {analysis['location']}:\n"
-                                    response_text += f"   - Temperatura: {analysis['temperature_celsius']}°C ({analysis['temperature']}°F)\n"
-                                    response_text += f"   - Condición: {analysis['condition']}\n"
-                                    response_text += f"   - Humedad: {analysis['humidity']}%\n"
-                                    response_text += f"   - Viento: {analysis['wind_speed']} m/s\n\n"
-                                    response_text += "💡 Recomendaciones:\n"
-                                    for rec in recommendations:
-                                        response_text += f"   - {rec}\n"
-                                else:
-                                    response_text = f"❌ No pude obtener el clima para {location}. Error: {weather_result.get('error', 'Desconocido')}"
-                            except Exception as e:
-                                response_text = f"❌ Error al consultar el clima: {str(e)}"
-                        else:
-                            # No se encontró ubicación, usar chat genérico
-                            conversation_history = [
-                                {"role": msg.type.value, "content": msg.content}
-                                for msg in chat_session.messages
-                            ]
-                            conversation_history.append({"role": "user", "content": user_input})
-                            result_chat = chat_service.chat(user_input, conversation_history)
-                            response_text = result_chat['response']
-                    else:
-                        # No es consulta de clima, usar chat genérico
-                        conversation_history = [
-                            {"role": msg.type.value, "content": msg.content}
-                            for msg in chat_session.messages
-                        ]
-                        conversation_history.append({"role": "user", "content": user_input})
-                        result_chat = chat_service.chat(user_input, conversation_history)
-                        response_text = result_chat['response']
+                    # Si el agente orquestador no está disponible, el Chat CLI no puede funcionar
+                    response_text = "❌ Agente orquestador no disponible. El Chat CLI requiere el agente orquestador para funcionar."
+                    print(f"\n{response_text}")
 
                 # Crear mensaje del asistente
                 assistant_msg = Message(

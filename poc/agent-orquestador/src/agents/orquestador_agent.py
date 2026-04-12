@@ -10,6 +10,7 @@ import re
 import json
 import sys
 import os
+import tomli
 
 # Calcular rutas ANTES de cualquier importación
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -124,9 +125,22 @@ class AgentOrquestador:
             })
         
         # Añadir instrucciones del sistema
+        # Definir herramientas disponibles (antes de cargar TOML)
         available_tools = "\n".join([f"- {tool}" for tool in self.mcp_tool_names])
         
-        # Obtener detalles de herramientas MCP con parámetros
+        # Cargar prompt base desde TOML
+        # project_root apunta a 'poc', la ruta relativa es directamente agent-orquestador
+        config_path = os.path.join(project_root, 'agent-orquestador', 'config', 'prompts.toml')
+        try:
+            with open(config_path, 'rb') as f:
+                config = tomli.load(f)
+                base_prompt = config['system_prompt']['content']
+        except Exception as e:
+            print(f"⚠️  No se pudo cargar prompts.toml: {e}")
+            # Fallback al prompt original
+            base_prompt = """Eres un asistente inteligente que analiza la intención del usuario y decide qué herramienta usar."""
+        
+        # Construir detalles de herramientas MCP
         mcp_tools_details = []
         for tool in self.mcp_tools:
             tool_name = tool.get('name', '')
@@ -139,63 +153,11 @@ class AgentOrquestador:
                     params_str = ", ".join(tool_params)
             mcp_tools_details.append(f"- {tool_name}({params_str})")
         
-        system_prompt = f"""Eres un asistente inteligente que analiza la intención del usuario y decide qué herramienta usar.
-
-⚠️  REGLA DE ORO: Usa SOLO las herramientas listadas aquí. NUNCA inventes nombres de herramientas.
-
-HERRAMIENTAS DISPONIBLES:
-- Agente Meteorológico: Para consultas de clima (ej: "¿Qué tiempo hace en Madrid?")
-{available_tools}
-- Chat Genérico: Para conversación general
-
-DETALLES DE HERRAMIENTAS MCP:
-{chr(10).join(mcp_tools_details) if mcp_tools_details else "No hay herramientas MCP disponibles"}
-
-INSTRUCCIONES:
-1. Identifica la intención del usuario
-2. Determina qué herramienta usar: "weather", "mcp", o "chat"
-3. Si es "mcp", usa SOLO los nombres de herramientas listados arriba
-4. Extrae argumentos relevantes (como ubicación para clima, nombre para saludos, etc.)
-5. Devuelve un JSON con la siguiente estructura:
-{{
-  "intent": "string describing the intent",
-  "tool_type": "weather" | "mcp" | "chat",
-  "tool_name": "nombre de la herramienta MCP (solo si tool_type es mcp)",
-  "arguments": {{"key": "value"}},
-  "confidence": 0.0-1.0
-}}
-
-EJEMPLOS:
-Usuario: "¿Cómo está el clima en Madrid?"
-{{
-  "intent": "weather_query",
-  "tool_type": "weather",
-  "arguments": {{"location": "Madrid"}},
-  "confidence": 0.95
-}}
-
-Usuario: "say_hello(name=Juan, lang=es)"
-{{
-  "intent": "mcp_say_hello",
-  "tool_type": "mcp",
-  "tool_name": "say_hello",
-  "arguments": {{"name": "Juan", "lang": "es"}},
-  "confidence": 0.98
-}}
-
-Usuario: "Hola, ¿cómo estás?"
-{{
-  "intent": "general_chat",
-  "tool_type": "chat",
-  "arguments": {{}},
-  "confidence": 0.8
-}}
-
-IMPORTANTE: Si el usuario pide múltiples idiomas y no hay herramienta multilingüe,
-responde usando la herramienta existente apropiadamente. NO inventes herramientas.
-
-Devuelve solo el JSON, sin texto adicional:
-"""
+        # Reemplazar variables dinámicas en el prompt
+        system_prompt = base_prompt.format(
+            available_tools=available_tools,
+            mcp_tools_details=chr(10).join(mcp_tools_details) if mcp_tools_details else "No hay herramientas MCP disponibles"
+        )
         
         messages.insert(0, {"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": user_input})
