@@ -1,5 +1,5 @@
 from typing import TypedDict, Annotated, Sequence, Optional
-from langgraph.graph import StateGraph, END
+from langgraph.graph import StateGraph, END, START
 from src.services.weather_service import WeatherService
 from src.services.deepseek_service import DeepSeekService
 from src.schemas.weather import WeatherData, AnalysisResult
@@ -110,7 +110,7 @@ builder = StateGraph(AgentState)
 builder.add_node("fetch", fetch_weather)
 builder.add_node("analyze", analyze_weather)
 
-builder.set_entry_point("fetch")
+builder.add_edge(START, "fetch")
 builder.add_edge("fetch", "analyze")
 builder.add_edge("analyze", END)
 

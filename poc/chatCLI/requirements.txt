@@ -1,5 +1,5 @@
 pydantic
 python-dotenv
 requests
-langgraph
+langgraph==1.1.6
 deepseek-sdk

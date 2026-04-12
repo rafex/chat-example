@@ -4,7 +4,7 @@ Decide qué herramienta usar según la intención del usuario usando LLM
 """
 
 from typing import TypedDict, Annotated, Sequence, Optional, Literal, Any
-from langgraph.graph import StateGraph, END
+from langgraph.graph import StateGraph, END, START
 from datetime import datetime
 import re
 import json
@@ -445,7 +445,7 @@ builder = StateGraph(OrquestadorState)
 builder.add_node("analyze_intent", analyze_intent_node)
 builder.add_node("execute_tool", execute_tool_node)
 
-builder.set_entry_point("analyze_intent")
+builder.add_edge(START, "analyze_intent")
 builder.add_edge("analyze_intent", "execute_tool")
 builder.add_edge("execute_tool", END)
 
