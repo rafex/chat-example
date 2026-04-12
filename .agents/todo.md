@@ -54,8 +54,8 @@
 - [x] Implementar `MemoryManager` con FAISS
 - [x] Integrar memoria en chat CLI
 - [x] Verificar funcionalidad de memoria temporal
-- [ ] Instalar dependencias faltantes (`scipy`, `scikit-learn`)
-- [ ] Mejorar memoria con embeddings preentrenados
+- [x] Instalar dependencias faltantes (`scipy`, `scikit-learn`)
+- [x] Mejorar memoria con embeddings preentrenados (all-MiniLM-L6-v2)
 
 ### 9. Integración MCP
 - [x] Explorar repositorio `mcp-example`
@@ -91,7 +91,7 @@
 | Chat Genérico | ✅ Completo | Con soporte MCP y memoria FAISS (poc/chatCLI/) |
 | Agente Orquestador | ✅ Completo | LangGraph StateGraph con decisión de herramientas |
 | MCP Router | ✅ Integrado | Herramientas MCP en agente orquestador |
-| Memoria FAISS | ✅ Funcional | Contexto de conversación durante sesión |
+| Memoria FAISS | ✅ Completa | Embeddings semánticos (all-MiniLM-L6-v2, dim=384) |
 
 ## ✅ TAREAS PENDIENTES COMPLETADAS
 
