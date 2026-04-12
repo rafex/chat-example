@@ -253,6 +253,22 @@ El sistema muestra:
 3. **Tests automatizados**: Verificar flujos de ejecución
 4. **Interfaz web**: Crear UI amigable en lugar de CLI
 
+## Versiones de LangGraph
+
+El proyecto utiliza diferentes versiones de LangGraph según el agente:
+
+| Agente | Versión LangGraph | Versión LangChain Core |
+|--------|-------------------|------------------------|
+| **Agent Orquestador** | 0.6.11 | 0.3.84 |
+| **Agent Weather** | 0.0.30 | No especificada |
+| **Chat CLI** | 0.0.30 | No especificada |
+
+### Notas sobre Versiones
+
+- **Agent Orquestador (v0.6.11)**: Versión más reciente con soporte completo para LangGraph
+- **Agent Weather y Chat CLI (v0.0.30)**: Versión anterior, compatible con el código existente
+- El agente orquestador está actualizado a la última versión para aprovechar características avanzadas de LangGraph
+
 ## Referencias
 
 - LangGraph Documentation: https://langchain-ai.github.io/langgraph/
