@@ -165,21 +165,14 @@ class AgentOrquestador:
         try:
             response = self.llm.chat(messages)
             
-            # Debug: mostrar respuesta del LLM
-            print(f"DEBUG: Respuesta del LLM: {response}")
-            
             # Parsear respuesta JSON
             json_match = re.search(r'\{.*\}', response, re.DOTALL)
             if json_match:
                 try:
                     result = json.loads(json_match.group())
                     
-                    # Debug: mostrar resultado parseado
-                    print(f"DEBUG: Resultado parseado: {result}")
-                    
                     # Validar que result es un diccionario
                     if not isinstance(result, dict):
-                        print(f"⚠️  El resultado no es un diccionario: {type(result)}")
                         return self.analyze_intent_by_rules(user_input, history)
                     
                     # Asegurar que tool_name esté en arguments para herramientas MCP
@@ -199,19 +192,13 @@ class AgentOrquestador:
                         "tool_type": result.get("tool_type", "chat"),
                         "arguments": arguments
                     }
-                except json.JSONDecodeError as e:
-                    print(f"⚠️  Error parseando JSON del LLM: {e}")
-                    print(f"   Respuesta: {response}")
+                except json.JSONDecodeError:
                     return self.analyze_intent_by_rules(user_input, history)
             else:
                 # Si no se encuentra JSON, usar análisis por reglas
-                print(f"⚠️  No se encontró JSON en la respuesta del LLM: {response}")
                 return self.analyze_intent_by_rules(user_input, history)
                 
-        except Exception as e:
-            print(f"⚠️  Error en análisis con LLM: {e}")
-            import traceback
-            traceback.print_exc()
+        except Exception:
             return self.analyze_intent_by_rules(user_input, history)
     
     def analyze_intent_by_rules(self, user_input: str, history: Sequence[dict[str, str]]) -> IntentAnalysis:
@@ -350,6 +337,15 @@ class AgentOrquestador:
                 analysis = result['analysis']
                 recommendations = result['recommendations']
                 
+                if analysis is None:
+                    return {
+                        "success": False,
+                        "tool_used": "weather",
+                        "tool_args": intent['arguments'],
+                        "response": f"❌ No se pudieron obtener datos climáticos para {location}",
+                        "timestamp": datetime.now()
+                    }
+                
                 response_text = f"🌞 Clima en {analysis['location']}:\n"
                 response_text += f"   - Temperatura: {analysis['temperature_celsius']}°C ({analysis['temperature']}°F)\n"
                 response_text += f"   - Condición: {analysis['condition']}\n"
@@ -430,7 +426,7 @@ def execute_tool_node(state: OrquestadorState) -> OrquestadorState:
     
     intent = {
         'intent': state.get('intent', ''),
-        'tool_type': state['tool_to_use'],
+        'tool_type': state.get('tool_to_use', 'chat'),
         'arguments': state.get('tool_args', {})
     }
     

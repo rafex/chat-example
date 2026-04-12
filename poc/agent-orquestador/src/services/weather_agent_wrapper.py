@@ -73,10 +73,10 @@ print(json.dumps(result, default=str))
         )
         
         if result.returncode == 0:
-            # Filtrar solo la línea JSON del stdout
+            # Filtrar solo la línea JSON del stdout (buscar la última línea que comienza con {)
             stdout_lines = result.stdout.strip().split('\n')
             json_line = None
-            for line in stdout_lines:
+            for line in reversed(stdout_lines):  # Buscar desde el final
                 if line.strip().startswith('{'):
                     json_line = line.strip()
                     break
