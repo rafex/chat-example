@@ -16,6 +16,7 @@ import numpy as np
 import faiss
 import re
 from collections import Counter
+from sentence_transformers import SentenceTransformer
 
 # Configurar paths para importar desde poc/agent-weather y lib/mcp
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -62,10 +63,19 @@ from mcp.router import MCPRouter
 
 
 class MemoryManager:
-    """Gestor de memoria temporal usando FAISS con vectores TF-IDF manuales"""
+    """Gestor de memoria temporal usando FAISS con embeddings preentrenados"""
     
-    def __init__(self):
-        self.dimension = 256  # Dimensión reducida para eficiencia
+    def __init__(self, model_name='all-MiniLM-L6-v2'):
+        # Cargar modelo de embeddings preentrenado (ligero y eficiente)
+        try:
+            self.encoder = SentenceTransformer(model_name)
+            self.dimension = self.encoder.get_sentence_embedding_dimension()
+            print(f"🧠 Memoria temporal inicializada con FAISS (Embeddings: {model_name}, dim={self.dimension})")
+        except Exception as e:
+            print(f"⚠️  Error cargando modelo de embeddings: {e}")
+            print("   Usando TF-IDF manual como fallback")
+            self.encoder = None
+            self.dimension = 256
         
         # Crear índice FAISS en memoria (no se guarda en disco)
         self.index = faiss.IndexFlatL2(self.dimension)
@@ -74,26 +84,33 @@ class MemoryManager:
         self.texts = []
         self.vectors = []
         
+        # Contador de palabras para estadísticas (opcional)
+        self.word_counter = Counter()
+    
+    def _text_to_vector(self, text: str):
+        """Convertir texto a vector de embeddings"""
+        if self.encoder:
+            # Usar modelo preentrenado para generar embeddings semánticos
+            try:
+                embedding = self.encoder.encode(text, convert_to_tensor=False)
+                return embedding
+            except Exception as e:
+                print(f"⚠️  Error generando embedding: {e}")
+        
+        # Fallback: TF-IDF manual si el encoder no está disponible
         # Vocabulario común (stop words básicas en español/inglés)
-        self.stop_words = set([
+        stop_words = set([
             'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',
             'de', 'del', 'al', 'en', 'con', 'por', 'para', 'sobre',
             'y', 'o', 'pero', 'porque', 'que', 'como', 'cuando',
             'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'is', 'are'
         ])
         
-        # Contador de palabras para construir vocabulario
-        self.word_counter = Counter()
-        
-        print("🧠 Memoria temporal inicializada con FAISS (TF-IDF manual, dim=256)")
-    
-    def _text_to_vector(self, text: str):
-        """Convertir texto a vector TF-IDF manual"""
         # Tokenizar texto
         words = re.findall(r'\w+', text.lower())
         
         # Filtrar stop words
-        words = [w for w in words if w not in self.stop_words and len(w) > 2]
+        words = [w for w in words if w not in stop_words and len(w) > 2]
         
         # Contar palabras
         word_counts = Counter(words)
