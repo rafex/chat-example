@@ -1,7 +1,7 @@
 # Core dependencies
 langgraph==1.1.6
 requests==2.31.0
-pydantic==2.5.0
+pydantic==2.12.5
 python-dotenv==1.0.0
 openai==1.12.0
 

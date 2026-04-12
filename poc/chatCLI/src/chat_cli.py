@@ -16,7 +16,16 @@ import numpy as np
 import faiss
 import re
 from collections import Counter
-from sentence_transformers import SentenceTransformer
+
+# Intentar importar SentenceTransformer, fallback si falla
+try:
+    from sentence_transformers import SentenceTransformer
+    SENTENCE_TRANSFORMERS_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️  SentenceTransformers no disponible: {e}")
+    print("   Usando TF-IDF manual como fallback")
+    SentenceTransformer = None
+    SENTENCE_TRANSFORMERS_AVAILABLE = False
 
 # Configurar paths para importar desde poc/agent-weather y lib/mcp
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -68,13 +77,18 @@ class MemoryManager:
     
     def __init__(self, model_name='all-MiniLM-L6-v2'):
         # Cargar modelo de embeddings preentrenado (ligero y eficiente)
-        try:
-            self.encoder = SentenceTransformer(model_name)
-            self.dimension = self.encoder.get_sentence_embedding_dimension()
-            print(f"🧠 Memoria temporal inicializada con FAISS (Embeddings: {model_name}, dim={self.dimension})")
-        except Exception as e:
-            print(f"⚠️  Error cargando modelo de embeddings: {e}")
-            print("   Usando TF-IDF manual como fallback")
+        if SENTENCE_TRANSFORMERS_AVAILABLE and SentenceTransformer is not None:
+            try:
+                self.encoder = SentenceTransformer(model_name)
+                self.dimension = self.encoder.get_sentence_embedding_dimension()
+                print(f"🧠 Memoria temporal inicializada con FAISS (Embeddings: {model_name}, dim={self.dimension})")
+            except Exception as e:
+                print(f"⚠️  Error cargando modelo de embeddings: {e}")
+                print("   Usando TF-IDF manual como fallback")
+                self.encoder = None
+                self.dimension = 256
+        else:
+            print("🧠 Usando TF-IDF manual (SentenceTransformers no disponible)")
             self.encoder = None
             self.dimension = 256
         
