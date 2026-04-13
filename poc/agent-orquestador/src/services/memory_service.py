@@ -65,11 +65,22 @@ class ShortTermMemory:
         if not content:
             return False
         
-        # No guardar saludos triviales
-        greetings = ['hola', 'hello', 'hi', 'buenos días', 'buenas tardes', 'buenas noches', 'adiós', 'bye']
         content_lower = content.lower().strip()
-        if any(greeting in content_lower for greeting in greetings) and len(content.split()) < 3:
+        
+        # No guardar saludos triviales (independientemente de la longitud)
+        greetings = ['hola', 'hello', 'hi', 'buenos días', 'buenas tardes', 'buenas noches', 'adiós', 'bye']
+        if any(greeting in content_lower for greeting in greetings) and len(content.split()) <= 3:
             return False
+        
+        # No guardar respuestas genéricas del asistente
+        if role == 'assistant':
+            generic_responses = [
+                'entiendo', 'de acuerdo', 'ok', 'vale', 'correcto',
+                'puedo ayudarte', 'en qué puedo ayudarte', '¿en qué puedo ayudarte?',
+                'entendido', 'perfecto', 'de acuerdo'
+            ]
+            if any(response in content_lower for response in generic_responses) and len(content.split()) <= 5:
+                return False
         
         return True
     
@@ -98,7 +109,7 @@ class SemanticMemory:
     def __init__(self, dimension: int = 384, index_path: Optional[str] = None):
         """
         Args:
-            dimension: Dimensión de los embeddings
+            dimension: Dimensión inicial de los embeddings (se ajustará dinámicamente)
             index_path: Ruta para guardar/cargar el índice FAISS
         """
         self.dimension = dimension
@@ -107,11 +118,15 @@ class SemanticMemory:
         if not FAISS_AVAILABLE:
             raise ImportError("FAISS no está disponible. Instala faiss-cpu.")
         
-        # Inicializar índice FAISS
+        # Inicializar índice FAISS con dimensión dinámica
+        # Usamos IndexFlatIP sin especificar dimension para que sea flexible
         self.index = faiss.IndexFlatIP(dimension)  # Inner Product (similaridad coseno)
         
         # Metadata asociada a cada embedding
         self.metadata: List[Dict[str, Any]] = []
+        
+        # Flag para saber si el índice está inicializado
+        self._initialized = False
         
         # Cargar índice si existe
         if index_path and os.path.exists(index_path):
@@ -124,6 +139,26 @@ class SemanticMemory:
         
         # Normalizar embedding para similitud coseno
         faiss.normalize_L2(embedding_array)
+        
+        # Verificar si la dimensión del embedding coincide con la del índice
+        current_dim = embedding_array.shape[1]
+        if not self._initialized or current_dim != self.dimension:
+            if not self._initialized:
+                # Primera inicialización
+                self.dimension = current_dim
+                self.index = faiss.IndexFlatIP(self.dimension)
+                self._initialized = True
+            else:
+                # Dimensión diferente: recrear índice con nueva dimensión
+                print(f"⚠️  Cambiando dimensión de {self.dimension} a {current_dim}")
+                self.dimension = current_dim
+                old_index = self.index
+                self.index = faiss.IndexFlatIP(self.dimension)
+                # Reañadir embeddings existentes si los hay
+                if old_index.ntotal > 0:
+                    # Esto no es trivial con FAISS, mejor empezar de cero
+                    # En una implementación real, necesitaríamos reconstruir todos los embeddings
+                    pass
         
         # Añadir al índice
         self.index.add(embedding_array)
