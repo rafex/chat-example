@@ -46,6 +46,7 @@ try:
     from registry.tool_registry import tool_registry
     from validators.decision_validator import DecisionValidator
     from services.logger import logger
+    from services.config_service import get_config
 except ImportError:
     try:
         from schemas.orquestador import OrquestadorState, IntentAnalysis, ToolExecutionResult, ToolType
@@ -54,6 +55,7 @@ except ImportError:
         from registry.tool_registry import tool_registry
         from validators.decision_validator import DecisionValidator
         from services.logger import logger
+        from services.config_service import get_config
     except ImportError:
         try:
             # Fallback para ejecución directa
@@ -63,6 +65,7 @@ except ImportError:
             from tool_registry import tool_registry
             from decision_validator import DecisionValidator
             from logger import logger
+            from config_service import get_config
         except ImportError as e:
             raise ImportError(f"No se pudo importar los módulos necesarios: {e}")
 
@@ -711,8 +714,12 @@ def validate_decision_node(state: OrquestadorState) -> OrquestadorState:
 def route_request_node(state: OrquestadorState) -> OrquestadorState:
     """Nodo: Decide si ejecutar herramienta o responder con chat"""
     validation_result = state.get('validation_result', {})
+    config = get_config()
     
     new_state = dict(state)
+    
+    # Añadir información del modo actual al estado
+    new_state['orchestrator_mode'] = config.mode
     
     if validation_result.get('valid', False):
         # Validación exitosa, route según tool_name
@@ -727,8 +734,29 @@ def route_request_node(state: OrquestadorState) -> OrquestadorState:
         else:
             new_state['next_node'] = 'generic_chat'
     else:
-        # Validación fallida, usar chat genérico con explicación
-        new_state['next_node'] = 'generic_chat'
+        # Validación fallida
+        if config.is_strict_mode():
+            # Modo STRICT: Generar mensaje explicando límites del sistema
+            errors = validation_result.get('errors', [])
+            error_messages = [err.get('message', 'Error desconocido') for err in errors]
+            
+            # Añadir información sobre herramientas disponibles
+            available_tools = tool_registry.list_tools()
+            tools_info = ", ".join([t['name'] for t in available_tools if t['available']])
+            
+            # Preparar mensaje de error controlado
+            new_state['error_message'] = (
+                f"No se pudo procesar la solicitud. {', '.join(error_messages)}. "
+                f"Herramientas disponibles: {tools_info}. "
+                f"El sistema no inventa capacidades inexistentes."
+            )
+            
+            # En modo strict, aunque la validación falle, podemos responder con chat
+            # pero informando sobre los límites
+            new_state['next_node'] = 'generic_chat'
+        else:
+            # Modo FLEXIBLE: Permitir respuesta conversacional
+            new_state['next_node'] = 'generic_chat'
     
     return new_state
 
@@ -839,21 +867,40 @@ def execute_tool_node(state: OrquestadorState) -> OrquestadorState:
 
 def generic_chat_node(state: OrquestadorState) -> OrquestadorState:
     """Nodo: Genera respuesta conversacional sin tool"""
+    config = get_config()
     validation_result = state.get('validation_result', {})
     errors = state.get('errors', [])
+    error_message = state.get('error_message', '')
     
+    # Si hay error_message del modo strict, usarla
+    if error_message:
+        response_text = f"⚠️ {error_message}"
     # Si hay errores de validación, informar al usuario
-    if errors:
+    elif errors:
         response_text = "⚠️ No pude ejecutar la solicitud:\n"
         for error in errors[-3:]:  # Mostrar últimos 3 errores
             response_text += f"   - {error}\n"
-        response_text += "\n¿Puedes reformular tu pregunta?"
+        
+        if config.is_strict_mode():
+            # En modo strict, informar sobre límites del sistema
+            available_tools = tool_registry.list_tools()
+            tools_info = ", ".join([t['name'] for t in available_tools if t['available']])
+            response_text += f"\n Herramientas disponibles: {tools_info}"
+            response_text += "\n El sistema no inventa capacidades inexistentes."
+        
+        response_text += "\n\n¿Puedes reformular tu pregunta?"
     else:
         # Respuesta genérica
         response_text = "Entiendo tu consulta. En esta versión del sistema, puedo:\n"
         response_text += "   - Consultar el clima de una ciudad\n"
         response_text += "   - Saludarte en diferentes idiomas\n"
         response_text += "   - Conversar sobre temas generales\n\n"
+        
+        if config.is_strict_mode():
+            # En modo strict, informar sobre límites del sistema
+            response_text += "⚠️ Modo estricto activado: Solo uso herramientas reales registradas.\n"
+            response_text += "No invento capacidades que no existen en el sistema.\n\n"
+        
         response_text += "¿En qué puedo ayudarte?"
     
     new_state = dict(state)

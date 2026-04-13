@@ -108,3 +108,29 @@ else: \
     else \
         echo "⚠️  Entorno no existe"; \
     fi
+
+# Cambiar modo de operación
+mode MODE:
+    @echo "Cambiando modo de operación a: {{MODE}}"
+    @if [ "{{MODE}}" != "strict" ] && [ "{{MODE}}" != "flexible" ]; then \
+        echo "❌ Modo inválido. Usar 'strict' o 'flexible'"; \
+        exit 1; \
+    fi
+    @if [ -f ".env" ]; then \
+        sed -i.bak 's/ORCHESTRATOR_MODE=.*/ORCHESTRATOR_MODE={{MODE}}/' .env && \
+        echo "✅ Modo cambiado a {{MODE}}"; \
+    else \
+        echo "⚠️  No se encontró .env. Creando uno basado en .env.example"; \
+        cp poc/.env.example .env && \
+        sed -i.bak 's/ORCHESTRATOR_MODE=.*/ORCHESTRATOR_MODE={{MODE}}/' .env && \
+        echo "✅ .env creado y modo configurado a {{MODE}}"; \
+    fi
+
+# Verificar modo actual
+mode-status:
+    @echo "Modo de operación actual:"
+    @if [ -f ".env" ]; then \
+        grep "ORCHESTRATOR_MODE" .env || echo "⚠️  No se encontró configuración de modo"; \
+    else \
+        echo "⚠️  No se encontró .env. Modo por defecto: strict"; \
+    fi

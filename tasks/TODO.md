@@ -9,8 +9,8 @@ _Proyecto en etapa de implementación de memoria semántica con FAISS._
 - [x] Integrar FAISS para memoria semántica
 - [x] Actualizar Justfile con comandos de memoria
 - [x] Documentar política de memoria en agents/DECISIONS.md
-- [ ] Implementar modos de operación (strict/flexible)
-- [ ] Probar integración de memoria en conversaciones reales
+- [x] Implementar modos de operación (strict/flexible)
+- [ ] Probar integración de memoria y modos de operación en conversaciones reales
 
 ## History
 | Date | Plan | Status |

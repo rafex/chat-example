@@ -36,15 +36,20 @@
 ## [DECISION-004] Modos de Operación (Strict/Flexible)
 
 - **Date:** 2026-04-12
-- **Status:** pending
-- **Context:** Documentación menciona modos `strict` y `flexible`, pero no están implementados.
-- **Decision:** Pendiente de implementación. Los modos deben controlar:
-  - **Modo Strict:** Solo herramientas reales, no inventar capacidades, respuesta controlada cuando no existe herramienta
-  - **Modo Flexible:** Permite respuesta conversacional adicional, útil para pruebas exploratorias
+- **Status:** accepted
+- **Context:** Necesidad de controlar el comportamiento del orquestador según el entorno (producción vs pruebas).
+- **Decision:** Implementar dos modos de operación configurables mediante variable de entorno:
+  - **Modo Strict:** Solo usa herramientas reales, no inventa capacidades, respuesta controlada cuando no existe herramienta. Ideal para producción.
+  - **Modo Flexible:** Permite respuesta conversacional adicional, útil para pruebas exploratorias. Aun así no inventa herramientas inexistentes.
 - **Consequences:**
-  - Positivo: Mayor control sobre comportamiento del sistema
-  - Negativo: Requiere implementación en orquestador y validadores
-  - **Acción requerida:** Implementar variable de entorno `ORCHESTRATOR_MODE=strict|flexible`
+  - Positivo: Mayor control sobre comportamiento del sistema según entorno
+  - Positivo: Flexibilidad para pruebas sin sacrificar seguridad
+  - Negativo: Complejidad adicional mínima en el código
+- **Implementación:**
+  - Variable de entorno: `ORCHESTRATOR_MODE=strict|flexible`
+  - Servicio `config_service.py` para gestionar configuración
+  - Lógica en `route_request_node` y `generic_chat_node`
+  - Comandos Justfile: `just mode strict|flexible`, `just mode-status`
 
 ## [DECISION-005] Arquitectura de Memoria Dual
 
