@@ -41,19 +41,28 @@ timeout_seconds = 30
 [agents.orquestador]
 model = "deepseek-chat"
 provider = "deepseek"
-system_prompt = "agents/prompts/orquestador_system.txt"
+system_prompt_file = "poc/prompts.toml"
+system_prompt_key = "agents.orquestador.system_prompt"
 
 [agents.guard]
 model = "openai/gpt-oss-safeguard-20b"
 provider = "openrouter"
-system_prompt = "agents/prompts/guard_system.txt"
+system_prompt_file = "poc/prompts.toml"
+system_prompt_key = "agents.guard.system_prompt"
 enabled = true
-# Niveles de seguridad: low, medium, high
 security_level = "medium"
+
+[agents.chat]
+model = "openai/gpt-oss-20b:free"
+provider = "openrouter"
+system_prompt_file = "poc/prompts.toml"
+system_prompt_key = "agents.chat.system_prompt"
 
 [agents.weather]
 model = "deepseek-chat"
 provider = "deepseek"
+system_prompt_file = "poc/prompts.toml"
+system_prompt_key = "agents.weather.system_prompt"
 
 # ==============================================================================
 # MEMORY CONFIGURATION
