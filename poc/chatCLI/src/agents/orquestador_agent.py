@@ -28,10 +28,37 @@ if os.path.join(agent_weather_src, 'services') not in sys.path:
 def extract_location_from_text(text):
     """Extrae ubicación del texto usando patrones simples"""
     import re
-    # Patrón: "en [ciudad]", "para [ciudad]", "de [ciudad]"
-    match = re.search(r'(en|para|de|en el|en la)\s+(\w+)', text, re.IGNORECASE)
-    if match:
-        return match.group(2).title()
+    
+    # Lista de ciudades españolas comunes
+    cities = [
+        'Madrid', 'Barcelona', 'Valencia', 'Sevilla', 'Bilbao',
+        'Zaragoza', 'Palma', 'Murcia', 'Granada', 'Alicante',
+        'Córdoba', 'Valladolid', 'Vigo', 'Gijón', 'L Hospitalet',
+        'Vitoria', 'La Coruña', 'Elche', 'Terrassa'
+    ]
+    
+    # Primero, buscar ciudad específica en el texto
+    for city in cities:
+        if city.lower() in text.lower():
+            return city
+    
+    # Patrón: "en [ciudad]", "para [ciudad]", "de [ciudad]", "voy a [ciudad]"
+    patterns = [
+        r'(en|para|de|voy a|visitar)\s+(\w+(?:\s+\w+)*)',
+        r'en\s+(\w+(?:\s+\w+)*?)\s*(?:\?|\.|$|,)',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            location = match.group(2).strip()
+            # Verificar si es una ciudad conocida
+            for city in cities:
+                if city.lower() == location.lower():
+                    return city
+            # Si no es ciudad conocida, devolver como está
+            return location.title()
+    
     return None
 
 # Importar wrapper de weather
@@ -138,11 +165,18 @@ _register_tools()
 
 def analyze_intent_by_rules(user_input: str, history: Sequence[dict]) -> dict:
     """Analiza intención usando reglas"""
+    import re
     user_input_lower = user_input.lower()
     
-    # Verificar si es consulta de clima
+    # Verificar si es consulta de clima (usando coincidencia de palabras completas)
     weather_keywords = ['clima', 'weather', 'temperatura', 'lluvia', 'sol', 'viento', 'nubes', 'nieve', 'humedad']
-    weather_match = any(keyword in user_input_lower for keyword in weather_keywords)
+    weather_match = False
+    for keyword in weather_keywords:
+        # Patrón de expresión regular para palabra completa
+        pattern = r'\b' + re.escape(keyword) + r'\b'
+        if re.search(pattern, user_input_lower):
+            weather_match = True
+            break
     
     if weather_match:
         location = extract_location_from_text(user_input)
