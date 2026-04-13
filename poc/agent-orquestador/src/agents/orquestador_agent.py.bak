@@ -57,6 +57,7 @@ except ImportError:
         from validators.decision_validator import DecisionValidator
         from services.logger import logger
         from services.config_service import get_config
+        from services.session_service import get_session_manager
     except ImportError:
         try:
             # Fallback para ejecución directa
@@ -67,6 +68,7 @@ except ImportError:
             from decision_validator import DecisionValidator
             from logger import logger
             from config_service import get_config
+            from session_service import get_session_manager
         except ImportError as e:
             raise ImportError(f"No se pudo importar los módulos necesarios: {e}")
 
@@ -496,6 +498,68 @@ def retrieve_memory_node(state: OrquestadorState) -> OrquestadorState:
             new_state['retrieved_memories'] = []
             new_state['conversation_history'] = state.get('conversation_history', [])
             return new_state
+        
+        # Generar embedding para el mensaje del usuario
+        try:
+            user_embedding = embedding_service.embed_single(user_message)
+            
+            # Obtener contexto de memoria dual
+            context = memory_service.get_context(
+                query_embedding=user_embedding,
+                k_semantic=3
+            )
+            
+            # Añadir turno actual a memoria conversacional
+            memory_service.add_conversation_turn("user", user_message)
+            
+            # Registrar generación de embedding
+            session_id = state.get('session_id', 'unknown')
+            turn_id = state.get('turn_id', 0)
+            
+            logger.log_event(
+                session_id=session_id,
+                turn_id=turn_id,
+                event_type="memory_retrieval",
+                status="success",
+                message=f"Memoria recuperada con {len(context['semantic'])} elementos semánticos",
+                details={
+                    "backend": embedding_service.backend_name,
+                    "dimension": embedding_service.dimension,
+                    "short_term_size": len(context['short_term']),
+                    "semantic_size": len(context['semantic'])
+                }
+            )
+            
+            # Combinar historial reciente con memoria semántica
+            retrieved_memories = context['semantic']
+            
+            # Actualizar conversation_history en el estado
+            conversation_history = state.get('conversation_history', [])
+            conversation_history.extend(context['short_term'])
+            
+        except Exception as e:
+            session_id = state.get('session_id', 'unknown')
+            turn_id = state.get('turn_id', 0)
+            logger.log_error(
+                session_id=session_id,
+                turn_id=turn_id,
+                error_type="memory_retrieval",
+                message=f"Error en recuperación de memoria: {str(e)}"
+            )
+            retrieved_memories = []
+            conversation_history = state.get('conversation_history', [])
+    
+    except ImportError as e:
+        # Fallback si no está disponible el servicio de memoria
+        print(f"⚠️  MemoryService no disponible: {e}")
+        retrieved_memories = []
+        conversation_history = state.get('conversation_history', [])
+    
+    new_state = dict(state)
+    new_state['retrieved_memories'] = retrieved_memories
+    new_state['conversation_history'] = conversation_history
+    
+    return new_state
         
         # Generar embedding para el mensaje del usuario
         try:

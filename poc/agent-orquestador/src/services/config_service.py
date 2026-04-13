@@ -25,7 +25,7 @@ class OrchestratorConfig:
             print(f"⚠️  Modo '{mode_str}' no reconocido. Usando 'strict' por defecto.")
             return "strict"
         
-        return mode_str
+        return mode_str  # type: ignore  # type: ignore
     
     def _load_debug(self) -> bool:
         """Carga el flag de debug desde variable de entorno"""
