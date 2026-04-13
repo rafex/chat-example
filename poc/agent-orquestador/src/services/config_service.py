@@ -90,6 +90,12 @@ class OrchestratorConfig:
             return self.toml_config.get_current_config()
         return {}
 
+    def get_guard_config(self) -> dict:
+        """Obtiene configuración del Guard Agent desde TOML"""
+        if self.toml_config:
+            return self.toml_config.get_guard_config()
+        return {}
+
 
 # Instancia global de configuración
 _config: Optional[OrchestratorConfig] = None
