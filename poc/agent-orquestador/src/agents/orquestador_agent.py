@@ -204,7 +204,7 @@ class AgentOrquestador:
         self.mcp_keywords = [
             'hola', 'hello', 'saludar', 'greet', 'idioma', 'language',
             'herramienta', 'tool', 'mcp', 'servicio', 'service',
-            'saluda', 'decir', 'hablar'
+            'saluda', 'saludame', 'decir', 'hablar'
         ]
     
     def analyze_intent_by_rules(self, user_input: str, history: Sequence[dict[str, str]]) -> IntentAnalysis:
