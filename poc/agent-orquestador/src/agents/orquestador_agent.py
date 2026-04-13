@@ -40,12 +40,13 @@ for path in paths_to_add:
         sys.path.insert(0, path)
 
 try:
-    from src.schemas.orquestador import OrquestadorState, IntentAnalysis, ToolExecutionResult, ToolType
-    from src.services.weather_agent_wrapper import execute_weather_agent, extract_location_from_text
-    from src.services.mcp_wrapper import execute_mcp_tool, list_mcp_tools
-    from src.registry.tool_registry import tool_registry
-    from src.validators.decision_validator import DecisionValidator
-    from src.services.logger import logger
+    from schemas.orquestador import OrquestadorState, IntentAnalysis, ToolExecutionResult, ToolType
+    from services.weather_agent_wrapper import execute_weather_agent, extract_location_from_text
+    from services.mcp_wrapper import execute_mcp_tool, list_mcp_tools
+    from registry.tool_registry import tool_registry
+    from validators.decision_validator import DecisionValidator
+    from services.logger import logger
+    from services.config_service import get_config
 except ImportError:
     try:
         from schemas.orquestador import OrquestadorState, IntentAnalysis, ToolExecutionResult, ToolType
@@ -54,6 +55,7 @@ except ImportError:
         from registry.tool_registry import tool_registry
         from validators.decision_validator import DecisionValidator
         from services.logger import logger
+        from services.config_service import get_config
     except ImportError:
         try:
             # Fallback para ejecución directa
@@ -63,6 +65,7 @@ except ImportError:
             from tool_registry import tool_registry
             from decision_validator import DecisionValidator
             from logger import logger
+            from config_service import get_config
         except ImportError as e:
             raise ImportError(f"No se pudo importar los módulos necesarios: {e}")
 
@@ -456,11 +459,94 @@ def load_context_node(state: OrquestadorState) -> OrquestadorState:
 
 
 def retrieve_memory_node(state: OrquestadorState) -> OrquestadorState:
-    """Nodo: Recupera memoria semántica relevante desde FAISS"""
-    # En una implementación real, esto consultaría FAISS
-    # Por ahora, simulamos recuperación vacía
+    """Nodo: Recupera memoria semántica relevante desde FAISS usando memoria dual"""
+    import sys
+    import os
+    
+    # Añadir path de servicios si no está
+    agent_orquestador_src = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    services_path = os.path.join(agent_orquestador_src, 'services')
+    if services_path not in sys.path:
+        sys.path.insert(0, services_path)
+    
+    try:
+        from embedding_service import get_embedding_service
+        from memory_service import get_memory_service
+        
+        # Obtener servicios
+        embedding_service = get_embedding_service(backend="tfidf")
+        session_id = state.get('session_id', 'default')
+        memory_service = get_memory_service(session_id)
+        
+        # Obtener mensaje del usuario
+        user_message = state.get('user_message', state.get('user_input', ''))
+        
+        if not user_message:
+            # Si no hay mensaje, devolver contexto de memoria existente
+            new_state = dict(state)
+            new_state['retrieved_memories'] = []
+            new_state['conversation_history'] = state.get('conversation_history', [])
+            return new_state
+        
+        # Generar embedding para el mensaje del usuario
+        try:
+            user_embedding = embedding_service.embed_single(user_message)
+            
+            # Obtener contexto de memoria dual
+            context = memory_service.get_context(
+                query_embedding=user_embedding,
+                k_semantic=3
+            )
+            
+            # Añadir turno actual a memoria conversacional
+            memory_service.add_conversation_turn("user", user_message)
+            
+            # Registrar generación de embedding
+            session_id = state.get('session_id', 'unknown')
+            turn_id = state.get('turn_id', 0)
+            
+            logger.log_event(
+                session_id=session_id,
+                turn_id=turn_id,
+                event_type="memory_retrieval",
+                status="success",
+                message=f"Memoria recuperada con {len(context['semantic'])} elementos semánticos",
+                details={
+                    "backend": embedding_service.backend_name,
+                    "dimension": embedding_service.dimension,
+                    "short_term_size": len(context['short_term']),
+                    "semantic_size": len(context['semantic'])
+                }
+            )
+            
+            # Combinar historial reciente con memoria semántica
+            retrieved_memories = context['semantic']
+            
+            # Actualizar conversation_history en el estado
+            conversation_history = state.get('conversation_history', [])
+            conversation_history.extend(context['short_term'])
+            
+        except Exception as e:
+            session_id = state.get('session_id', 'unknown')
+            turn_id = state.get('turn_id', 0)
+            logger.log_error(
+                session_id=session_id,
+                turn_id=turn_id,
+                error_type="memory_retrieval",
+                message=f"Error en recuperación de memoria: {str(e)}"
+            )
+            retrieved_memories = []
+            conversation_history = state.get('conversation_history', [])
+    
+    except ImportError as e:
+        # Fallback si no está disponible el servicio de memoria
+        print(f"⚠️  MemoryService no disponible: {e}")
+        retrieved_memories = []
+        conversation_history = state.get('conversation_history', [])
+    
     new_state = dict(state)
-    new_state['retrieved_memories'] = []
+    new_state['retrieved_memories'] = retrieved_memories
+    new_state['conversation_history'] = conversation_history
     
     return new_state
 
@@ -628,8 +714,12 @@ def validate_decision_node(state: OrquestadorState) -> OrquestadorState:
 def route_request_node(state: OrquestadorState) -> OrquestadorState:
     """Nodo: Decide si ejecutar herramienta o responder con chat"""
     validation_result = state.get('validation_result', {})
+    config = get_config()
     
     new_state = dict(state)
+    
+    # Añadir información del modo actual al estado
+    new_state['orchestrator_mode'] = config.mode
     
     if validation_result.get('valid', False):
         # Validación exitosa, route según tool_name
@@ -644,8 +734,29 @@ def route_request_node(state: OrquestadorState) -> OrquestadorState:
         else:
             new_state['next_node'] = 'generic_chat'
     else:
-        # Validación fallida, usar chat genérico con explicación
-        new_state['next_node'] = 'generic_chat'
+        # Validación fallida
+        if config.is_strict_mode():
+            # Modo STRICT: Generar mensaje explicando límites del sistema
+            errors = validation_result.get('errors', [])
+            error_messages = [err.get('message', 'Error desconocido') for err in errors]
+            
+            # Añadir información sobre herramientas disponibles
+            available_tools = tool_registry.list_tools()
+            tools_info = ", ".join([t['name'] for t in available_tools if t['available']])
+            
+            # Preparar mensaje de error controlado
+            new_state['error_message'] = (
+                f"No se pudo procesar la solicitud. {', '.join(error_messages)}. "
+                f"Herramientas disponibles: {tools_info}. "
+                f"El sistema no inventa capacidades inexistentes."
+            )
+            
+            # En modo strict, aunque la validación falle, podemos responder con chat
+            # pero informando sobre los límites
+            new_state['next_node'] = 'generic_chat'
+        else:
+            # Modo FLEXIBLE: Permitir respuesta conversacional
+            new_state['next_node'] = 'generic_chat'
     
     return new_state
 
@@ -756,21 +867,40 @@ def execute_tool_node(state: OrquestadorState) -> OrquestadorState:
 
 def generic_chat_node(state: OrquestadorState) -> OrquestadorState:
     """Nodo: Genera respuesta conversacional sin tool"""
+    config = get_config()
     validation_result = state.get('validation_result', {})
     errors = state.get('errors', [])
+    error_message = state.get('error_message', '')
     
+    # Si hay error_message del modo strict, usarla
+    if error_message:
+        response_text = f"⚠️ {error_message}"
     # Si hay errores de validación, informar al usuario
-    if errors:
+    elif errors:
         response_text = "⚠️ No pude ejecutar la solicitud:\n"
         for error in errors[-3:]:  # Mostrar últimos 3 errores
             response_text += f"   - {error}\n"
-        response_text += "\n¿Puedes reformular tu pregunta?"
+        
+        if config.is_strict_mode():
+            # En modo strict, informar sobre límites del sistema
+            available_tools = tool_registry.list_tools()
+            tools_info = ", ".join([t['name'] for t in available_tools if t['available']])
+            response_text += f"\n Herramientas disponibles: {tools_info}"
+            response_text += "\n El sistema no inventa capacidades inexistentes."
+        
+        response_text += "\n\n¿Puedes reformular tu pregunta?"
     else:
         # Respuesta genérica
         response_text = "Entiendo tu consulta. En esta versión del sistema, puedo:\n"
         response_text += "   - Consultar el clima de una ciudad\n"
         response_text += "   - Saludarte en diferentes idiomas\n"
         response_text += "   - Conversar sobre temas generales\n\n"
+        
+        if config.is_strict_mode():
+            # En modo strict, informar sobre límites del sistema
+            response_text += "⚠️ Modo estricto activado: Solo uso herramientas reales registradas.\n"
+            response_text += "No invento capacidades que no existen en el sistema.\n\n"
+        
         response_text += "¿En qué puedo ayudarte?"
     
     new_state = dict(state)
