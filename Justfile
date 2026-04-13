@@ -134,3 +134,12 @@ mode-status:
     else \
         echo "⚠️  No se encontró .env. Modo por defecto: strict"; \
     fi
+
+# Limpiar sesiones activas
+clean-sessions:
+    @echo "Limpiando sesiones activas..."
+    @if [ -d "poc/agent-orquestador/venv" ]; then \
+        poc/agent-orquestador/venv/bin/python -c "from src.services.session_service import cleanup_sessions; cleanup_sessions(); print('✅ Sesiones limpiadas')" 2>/dev/null || echo "⚠️  No se pudieron limpiar las sesiones"; \
+    else \
+        echo "⚠️  Entorno no existe"; \
+    fi
