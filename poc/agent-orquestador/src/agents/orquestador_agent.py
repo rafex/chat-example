@@ -776,7 +776,14 @@ def route_request_node(state: OrquestadorState) -> OrquestadorState:
         if config.is_strict_mode():
             # Modo STRICT: Generar mensaje explicando límites del sistema
             errors = validation_result.get('errors', [])
-            error_messages = [err.get('message', 'Error desconocido') for err in errors]
+            error_messages = []
+            for err in errors:
+                if isinstance(err, dict):
+                    error_messages.append(err.get('message', 'Error desconocido'))
+                elif isinstance(err, str):
+                    error_messages.append(err)
+                else:
+                    error_messages.append(str(err))
             
             # Añadir información sobre herramientas disponibles
             available_tools = tool_registry.list_tools()
