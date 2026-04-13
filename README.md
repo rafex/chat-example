@@ -6,10 +6,12 @@ Sistema multi-agente inteligente que integra **OpenWeatherMap** para clima, **MC
 
 - **Agente Orquestador**: Decide qué herramienta usar basándose en la intención del usuario
 - **Agente Meteorológico**: Consulta la API de OpenWeatherMap y genera recomendaciones con LLM
+- **Agente de Seguridad (Guard)**: Revisa respuestas para detectar contenido inapropiado o riesgoso
 - **MCP Router**: Integra herramientas adicionales (saludos multilingües, etc.)
 - **Memoria FAISS**: Contexto de conversación con embeddings semánticos
 - **Soporte Multi-LLM**: DeepSeek, OpenAI y OpenRouter configurables dinámicamente
-- **Configuración TOML**: Prompts del agente orquestador configurables vía archivo TOML
+- **Configuración TOML**: Prompts de sistema y configuración de agentes vía archivos TOML
+- **Servicio de Chat Ligero**: LLM ligero basado en OpenRouter para respuestas conversacionales
 
 ## Estructura del Proyecto
 
@@ -18,18 +20,26 @@ Sistema multi-agente inteligente que integra **OpenWeatherMap** para clima, **MC
 ├── Makefile                    # Build system
 ├── Justfile                    # Task runner
 ├── README.md                   # Documentación
+├── requirements.txt            # Dependencias globales
 ├── poc/                        # Directorio de pruebas y proyectos
 │   ├── .env                    # Variables de entorno compartidas
 │   ├── .env.example            # Plantilla de variables de entorno
+│   ├── config.toml             # Configuración global de agentes
+│   ├── prompts.toml            # Definición de prompts para todos los agentes
 │   ├── agent-weather/          # Agente meteorológico
 │   │   ├── src/                # Código fuente
 │   │   ├── venv/               # Entorno virtual
 │   │   └── requirements.txt    # Dependencias Python
 │   ├── agent-orquestador/      # Agente orquestador
 │   │   ├── src/                # Código fuente
-│   │   └── config/             # Configuración (prompts.toml)
+│   │   │   ├── services/       # Servicios (config_toml_service, prompt_service)
+│   │   │   └── agents/         # Agentes (orquestador_agent, guard_agent)
+│   │   └── requirements.txt    # Dependencias Python
+│   ├── agent-guard/            # Agente de seguridad
+│   │   └── src/                # Código fuente
 │   └── chatCLI/                # Chat CLI (interfaz de entrada/salida)
 │       ├── src/                # Código fuente
+│       │   └── services/       # Servicios (llm_service)
 │       └── venv/               # Entorno virtual
 └── lib/mcp/                    # MCP Router (herramientas adicionales)
 ```
@@ -47,6 +57,34 @@ just install
 ```
 
 ### Configuración
+
+#### Estructura de Configuración TOML
+
+El proyecto utiliza una estructura de configuración basada en TOML para organizar prompts y configuración de agentes:
+
+- **`poc/config.toml`**: Configuración global de agentes (modelos, providers, prompts)
+- **`poc/prompts.toml`**: Definición de prompts de sistema para cada agente
+
+Ejemplo de estructura en `poc/config.toml`:
+```toml
+[agents.orquestador]
+model = "deepseek-chat"
+provider = "deepseek"
+system_prompt_file = "poc/prompts.toml"
+system_prompt_key = "agents.orquestador.system_prompt"
+
+[agents.guard]
+model = "openai/gpt-oss-safeguard-20b"
+provider = "openrouter"
+enabled = true
+security_level = "medium"
+
+[agents.chat]
+model = "openai/gpt-oss-20b:free"
+provider = "openrouter"
+```
+
+#### Instalación
 
 1.  **Instalar Python 3.14**: Asegúrate de tener Python 3.14 o superior instalado en tu sistema.
     ```bash
@@ -66,13 +104,21 @@ just install
     ```
 4.  **Variables de Entorno**: Copia la plantilla y configura tus claves de API en `poc/.env`.
     ```bash
-    cp poc/.env.example poc/.env
+    cp .env.example poc/.env
     ```
     Configura las siguientes variables en `poc/.env`:
     - `OPENWEATHER_API_KEY`: Tu clave de API de OpenWeatherMap.
     - `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`: Claves para los LLMs (según el proveedor seleccionado).
     - `CURRENT_LLM_PROVIDER`: Define el LLM por defecto (`deepseek`, `openai`, `openrouter`).
+    - `ORCHESTRATOR_MODE`: Modo de operación (`strict` o `flexible`).
 5.  **Logger Estructurado**: La configuración del logger está integrada y lista para usarse. Los logs se generarán automáticamente en un formato estructurado para facilitar el análisis y la depuración.
+
+#### Servicios Implementados
+
+- **`PromptService`**: Gestiona prompts de sistema desde `poc/prompts.toml`
+- **`ConfigService`**: Carga configuración de agentes desde `poc/config.toml`
+- **`LLMLightService`**: Servicio de LLM ligero con OpenRouter para respuestas conversacionales
+- **`GuardAgent`**: Agente de seguridad que revisa respuestas para detectar contenido inapropiado
 
 
 2. Configura las API Keys en `poc/.env`:
@@ -169,8 +215,9 @@ python3 -c "from src.agents.weather_agent import run_weather_agent; print(run_we
 
 ## Tecnologías
 
-- **LangGraph 1.1.6**: Orquestación avanzada de grafos de estado para la toma de decisiones del agente.
+- **LangGraph 0.6.11**: Orquestación avanzada de grafos de estado para la toma de decisiones del agente.
 - **Python 3.14**: Entorno de ejecución recomendado.
+- **LangChain Core 0.3.84**: Framework para aplicaciones con LLM
 - **Arquitectura de Orquestación**:
     - **ToolRegistry**: Registro centralizado y determinista de todas las herramientas disponibles.
     - **DecisionValidator**: Valida rigurosamente las decisiones del LLM antes de la ejecución.
