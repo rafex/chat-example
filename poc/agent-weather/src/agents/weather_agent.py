@@ -1,8 +1,8 @@
 from typing import TypedDict, Annotated, Sequence, Optional
 from langgraph.graph import StateGraph, END, START
-from src.services.weather_service import WeatherService
-from src.services.deepseek_service import DeepSeekService
-from src.schemas.weather import WeatherData, AnalysisResult
+from ..services.weather_service import WeatherService
+from ..services.deepseek_service import DeepSeekService
+from ..schemas.weather import WeatherData, AnalysisResult
 from datetime import datetime
 
 # Definir el estado del agente

@@ -40,12 +40,12 @@ for path in paths_to_add:
         sys.path.insert(0, path)
 
 try:
-    from src.schemas.orquestador import OrquestadorState, IntentAnalysis, ToolExecutionResult, ToolType
-    from src.services.weather_agent_wrapper import execute_weather_agent, extract_location_from_text
-    from src.services.mcp_wrapper import execute_mcp_tool, list_mcp_tools
-    from src.registry.tool_registry import tool_registry
-    from src.validators.decision_validator import DecisionValidator
-    from src.services.logger import logger
+    from schemas.orquestador import OrquestadorState, IntentAnalysis, ToolExecutionResult, ToolType
+    from services.weather_agent_wrapper import execute_weather_agent, extract_location_from_text
+    from services.mcp_wrapper import execute_mcp_tool, list_mcp_tools
+    from registry.tool_registry import tool_registry
+    from validators.decision_validator import DecisionValidator
+    from services.logger import logger
 except ImportError:
     try:
         from schemas.orquestador import OrquestadorState, IntentAnalysis, ToolExecutionResult, ToolType
@@ -457,10 +457,73 @@ def load_context_node(state: OrquestadorState) -> OrquestadorState:
 
 def retrieve_memory_node(state: OrquestadorState) -> OrquestadorState:
     """Nodo: Recupera memoria semántica relevante desde FAISS"""
-    # En una implementación real, esto consultaría FAISS
-    # Por ahora, simulamos recuperación vacía
+    import sys
+    import os
+    
+    # Añadir path del servicio de embeddings si no está
+    agent_orquestador_src = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    services_path = os.path.join(agent_orquestador_src, 'services')
+    if services_path not in sys.path:
+        sys.path.insert(0, services_path)
+    
+    try:
+        from embedding_service import get_embedding_service
+        
+        # Obtener servicio de embeddings (TF-IDF según DECISION-001)
+        embedding_service = get_embedding_service(backend="tfidf")
+        
+        # Obtener mensaje del usuario
+        user_message = state.get('user_message', state.get('user_input', ''))
+        
+        if not user_message:
+            # Si no hay mensaje, devolver vacío
+            new_state = dict(state)
+            new_state['retrieved_memories'] = []
+            return new_state
+        
+        # Generar embedding para el mensaje del usuario
+        try:
+            user_embedding = embedding_service.embed_single(user_message)
+            
+            # TODO: Aquí iría la búsqueda en FAISS
+            # Por ahora, simulamos recuperación vacía con log
+            session_id = state.get('session_id', 'unknown')
+            turn_id = state.get('turn_id', 0)
+            
+            logger.log_event(
+                session_id=session_id,
+                turn_id=turn_id,
+                event_type="embedding_generation",
+                status="success",
+                message=f"Embedding generado con backend: {embedding_service.backend_name}",
+                details={
+                    "backend": embedding_service.backend_name,
+                    "dimension": embedding_service.dimension,
+                    "message_length": len(user_message)
+                }
+            )
+            
+            # Simulación de recuperación (en implementación real, buscaría en FAISS)
+            retrieved_memories = []
+            
+        except Exception as e:
+            session_id = state.get('session_id', 'unknown')
+            turn_id = state.get('turn_id', 0)
+            logger.log_error(
+                session_id=session_id,
+                turn_id=turn_id,
+                error_type="embedding_generation",
+                message=f"Error generando embedding: {str(e)}"
+            )
+            retrieved_memories = []
+        
+    except ImportError as e:
+        # Fallback si no está disponible el servicio de embeddings
+        print(f"⚠️  EmbeddingService no disponible: {e}")
+        retrieved_memories = []
+    
     new_state = dict(state)
-    new_state['retrieved_memories'] = []
+    new_state['retrieved_memories'] = retrieved_memories
     
     return new_state
 
