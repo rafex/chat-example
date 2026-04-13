@@ -44,10 +44,15 @@ if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
 # Configurar paths para importar desde poc/agent-weather y lib/mcp
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_dir))))
-agent_weather_src = os.path.join(project_root, 'poc', 'agent-weather', 'src')
+# current_dir es: poc/chatCLI/src
+# Necesitamos subir 3 niveles para llegar a la raíz del proyecto
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+agent_weather_dir = os.path.join(project_root, 'poc', 'agent-weather')  # Directorio que contiene 'src/'
+agent_weather_src = os.path.join(project_root, 'poc', 'agent-weather', 'src')  # Directorio src/ para imports de agent-weather
 lib_path = os.path.join(project_root, 'lib')
 
+if agent_weather_dir not in sys.path:
+    sys.path.insert(0, agent_weather_dir)
 if agent_weather_src not in sys.path:
     sys.path.insert(0, agent_weather_src)
 if lib_path not in sys.path:
