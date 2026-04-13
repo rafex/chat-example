@@ -720,22 +720,29 @@ def validate_decision_node(state: OrquestadorState) -> OrquestadorState:
     
     latency_ms = (time.time() - start_time) * 1000
     
-    # Convertir ValidationResult a dict
-    validation_dict = {
-        'valid': validation_result.valid,
-        'tool_name': validation_result.tool_name,
-        'arguments': validation_result.arguments,
-        'errors': validation_result.errors,
-        'missing_arguments': validation_result.missing_arguments
-    }
+    # Convertir ValidationResult a dict (manejar tanto objetos como dicts)
+    if isinstance(validation_result, dict):
+        validation_dict = validation_result
+        valid = validation_result.get('valid', False)
+        errors = validation_result.get('errors', [])
+    else:
+        validation_dict = {
+            'valid': validation_result.valid,
+            'tool_name': validation_result.tool_name,
+            'arguments': validation_result.arguments,
+            'errors': validation_result.errors,
+            'missing_arguments': validation_result.missing_arguments
+        }
+        valid = validation_result.valid
+        errors = validation_result.errors
     
     # Registrar validación
     logger.log_tool_validation(
         session_id=session_id,
         turn_id=turn_id,
         tool_name=tool_name or 'chat',
-        valid=validation_result.valid,
-        errors=validation_result.errors,
+        valid=valid,
+        errors=errors,
         latency_ms=latency_ms
     )
     
