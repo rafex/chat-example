@@ -1,2 +1,16 @@
+# Dependencias globales para desarrollo
 langgraph==1.1.6
-# Otras dependencias necesarias...
+langchain-core>=1.2.0
+pydantic==2.12.5
+python-dotenv>=1.0.0
+requests>=2.31.0
+numpy>=2.0.0
+faiss-cpu>=1.8.0
+tomli>=2.0.0
+openai>=1.0.0
+
+# Herramientas de desarrollo
+black>=23.0.0
+isort>=5.0.0
+flake8>=6.0.0
+pytest>=7.0.0

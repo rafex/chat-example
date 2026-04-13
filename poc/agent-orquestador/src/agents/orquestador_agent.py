@@ -466,7 +466,7 @@ def retrieve_memory_node(state: OrquestadorState) -> OrquestadorState:
 
 
 def analyze_intent_node(state: OrquestadorState) -> OrquestadorState:
-    """Nodo: Analiza intención del usuario"""
+    """Nodo: Analiza intención del usuario (soporta múltiples acciones)"""
     orquestador = AgentOrquestador()
     
     user_message = state.get('user_message', state.get('user_input', ''))
@@ -476,44 +476,95 @@ def analyze_intent_node(state: OrquestadorState) -> OrquestadorState:
     
     # Medir tiempo de análisis
     start_time = time.time()
-    intent = orquestador.analyze_intent(user_message, history)
+    analysis_result = orquestador.analyze_intent(user_message, history)
     latency_ms = (time.time() - start_time) * 1000
     
-    # Convertir IntentAnalysis a dict para el estado
-    llm_decision = {
-        'intent': intent['intent'],
-        'tool_type': intent['tool_type'],
-        'tool_name': None,
-        'arguments': intent['arguments'],
-        'confidence': intent['confidence'],
-        'requires_tool': intent['tool_type'] != 'chat',
-        'reasoning_summary': f"Intención detectada: {intent['intent']}",
-        'missing_arguments': []
-    }
+    # Soportar tanto formato antiguo (dict) como nuevo (lista en 'actions')
+    if isinstance(analysis_result, dict) and 'actions' in analysis_result:
+        # Nuevo formato: múltiples acciones
+        actions = analysis_result['actions']
+        llm_decisions = []
+        
+        for action in actions:
+            decision = {
+                'intent': action.get('intent', 'unknown'),
+                'tool_type': action.get('tool_type', 'chat'),
+                'tool_name': None,
+                'arguments': action.get('arguments', {}),
+                'confidence': action.get('confidence', 0.8),
+                'requires_tool': action.get('requires_tool', True),
+                'reasoning_summary': action.get('reasoning', 'Sin razón específica'),
+                'missing_arguments': action.get('missing_arguments', [])
+            }
+            
+            # Obtener nombre de tool específica si aplica
+            if action['tool_type'] == 'weather':
+                decision['tool_name'] = 'weather.get_current_weather'
+            elif action['tool_type'] == 'mcp':
+                # Extraer nombre de tool de los argumentos o usar 'say_hello' por defecto
+                tool_name = action['arguments'].get('tool_name', 'say_hello')
+                decision['tool_name'] = f'mcp.{tool_name}'
+            elif action['tool_type'] == 'chat':
+                decision['tool_name'] = 'chat.respond'
+            
+            llm_decisions.append(decision)
+            
+            # Registrar cada decisión
+            logger.log_llm_decision(
+                session_id=session_id,
+                turn_id=turn_id,
+                user_message=user_message,
+                llm_decision=decision,
+                latency_ms=latency_ms / len(actions)  # Distribuir tiempo
+            )
+        
+        new_state = dict(state)
+        new_state['llm_decisions'] = llm_decisions  # Lista de decisiones
+        new_state['llm_decision'] = llm_decisions[0] if llm_decisions else {}  # Compatibilidad
+        new_state['intent'] = llm_decisions[0]['intent'] if llm_decisions else 'unknown'
+        
+    else:
+        # Formato antiguo: única acción (compatibilidad hacia atrás)
+        intent = analysis_result
+        
+        # Convertir IntentAnalysis a dict para el estado
+        llm_decision = {
+            'intent': intent['intent'],
+            'tool_type': intent['tool_type'],
+            'tool_name': None,
+            'arguments': intent['arguments'],
+            'confidence': intent['confidence'],
+            'requires_tool': intent['tool_type'] != 'chat',
+            'reasoning_summary': f"Intención detectada: {intent['intent']}",
+            'missing_arguments': []
+        }
+        
+        # Obtener nombre de tool específica si aplica
+        if intent['tool_type'] == 'weather':
+            llm_decision['tool_name'] = 'weather.get_current_weather'
+        elif intent['tool_type'] == 'mcp':
+            tool_name = intent['arguments'].get('tool_name', 'say_hello')
+            llm_decision['tool_name'] = f'mcp.{tool_name}'
+        elif intent['tool_type'] == 'chat':
+            llm_decision['tool_name'] = 'chat.respond'
+        
+        # Registrar decisión del LLM
+        logger.log_llm_decision(
+            session_id=session_id,
+            turn_id=turn_id,
+            user_message=user_message,
+            llm_decision=llm_decision,
+            latency_ms=latency_ms
+        )
+        
+        new_state = dict(state)
+        new_state['llm_decisions'] = [llm_decision]  # Envolver en lista
+        new_state['llm_decision'] = llm_decision
+        new_state['intent'] = intent['intent']
     
-    # Obtener nombre de tool específica si aplica
-    if intent['tool_type'] == 'weather':
-        llm_decision['tool_name'] = 'weather.get_current_weather'
-    elif intent['tool_type'] == 'mcp':
-        tool_name = intent['arguments'].get('tool_name', 'say_hello')
-        llm_decision['tool_name'] = f'mcp.{tool_name}'
-    elif intent['tool_type'] == 'chat':
-        llm_decision['tool_name'] = 'chat.respond'
-    
-    # Registrar decisión del LLM
-    logger.log_llm_decision(
-        session_id=session_id,
-        turn_id=turn_id,
-        user_message=user_message,
-        llm_decision=llm_decision,
-        latency_ms=latency_ms
-    )
-    
-    new_state = dict(state)
-    new_state['llm_decision'] = llm_decision
-    new_state['intent'] = intent['intent']
-    new_state['tool_to_use'] = intent['tool_type']
-    new_state['tool_args'] = intent['arguments']
+    # Campos comunes
+    new_state['tool_to_use'] = new_state['llm_decision'].get('tool_type', 'chat')
+    new_state['tool_args'] = new_state['llm_decision'].get('arguments', {})
     
     return new_state
 
@@ -600,73 +651,105 @@ def route_request_node(state: OrquestadorState) -> OrquestadorState:
 
 
 def execute_tool_node(state: OrquestadorState) -> OrquestadorState:
-    """Nodo: Ejecuta la herramienta real seleccionada"""
+    """Nodo: Ejecuta las herramientas reales seleccionadas (soporta múltiples)"""
     orquestador = AgentOrquestador()
     session_id = state.get('session_id', 'unknown')
     turn_id = state.get('turn_id', 0)
     
-    validation_result = state.get('validation_result', {})
-    tool_name = validation_result.get('tool_name', '')
-    arguments = validation_result.get('arguments', {})
+    # Obtener decisiones (soporta lista o única decisión)
+    llm_decisions = state.get('llm_decisions', [])
+    if not llm_decisions:
+        llm_decisions = [state.get('llm_decision', {})] if state.get('llm_decision') else []
     
-    # Medir tiempo de ejecución
-    start_time = time.time()
+    execution_results = []
+    total_latency = 0
     
-    # Ejecutar herramienta
-    if tool_name == 'weather.get_current_weather':
-        location = arguments.get('location')
-        result = execute_weather_agent(location) if location else None
+    # Ejecutar cada herramienta
+    for decision in llm_decisions:
+        tool_name = decision.get('tool_name', '')
+        arguments = decision.get('arguments', {})
         
-        if result and result.get('success'):
-            analysis = result.get('analysis')
-            if analysis:
-                response_text = f"🌞 Clima en {analysis['location']}:\n"
-                response_text += f"   - Temperatura: {analysis['temperature_celsius']}°C\n"
-                response_text += f"   - Condición: {analysis['condition']}\n"
-                
-                # Añadir recomendaciones
-                recommendations = result.get('recommendations', [])
-                if recommendations:
-                    response_text += "\n💡 Recomendaciones:\n"
-                    for rec in recommendations:
-                        response_text += f"   - {rec}\n"
+        # Medir tiempo de ejecución
+        start_time = time.time()
+        
+        # Ejecutar herramienta según tipo
+        if tool_name == 'weather.get_current_weather':
+            location = arguments.get('location')
+            result = execute_weather_agent(location) if location else None
+            
+            if result and result.get('success'):
+                analysis = result.get('analysis')
+                if analysis:
+                    response_text = f"🌞 Clima en {analysis['location']}:\n"
+                    response_text += f"   - Temperatura: {analysis['temperature_celsius']}°C\n"
+                    response_text += f"   - Condición: {analysis['condition']}\n"
+                    
+                    # Añadir recomendaciones
+                    recommendations = result.get('recommendations', [])
+                    if recommendations:
+                        response_text += "\n💡 Recomendaciones:\n"
+                        for rec in recommendations:
+                            response_text += f"   - {rec}\n"
+                else:
+                    response_text = "❌ No se pudieron obtener datos climáticos."
             else:
-                response_text = "❌ No se pudieron obtener datos climáticos."
+                response_text = f"❌ Error obteniendo clima: {result.get('error', 'Desconocido')}" if result else "❌ Error desconocido"
+            
+            execution_results.append({
+                'tool_name': tool_name,
+                'arguments': arguments,
+                'result': result,
+                'response': response_text
+            })
+            
+        elif tool_name.startswith('mcp.'):
+            # Extraer tool_name real (quitando prefijo mcp.)
+            mcp_tool = tool_name.split('.', 1)[1]
+            result = execute_mcp_tool(mcp_tool, arguments)
+            
+            if result.get('success'):
+                response_text = result.get('response', 'Operación completada')
+            else:
+                response_text = f"❌ Error en herramienta MCP: {result.get('error', 'Desconocido')}"
+            
+            execution_results.append({
+                'tool_name': tool_name,
+                'arguments': arguments,
+                'result': result,
+                'response': response_text
+            })
+            
         else:
-            response_text = f"❌ Error obteniendo clima: {result.get('error', 'Desconocido')}" if result else "❌ Error desconocido"
+            # Tool desconocida, fallback a chat
+            execution_results.append({
+                'tool_name': tool_name,
+                'arguments': arguments,
+                'result': None,
+                'response': "No tengo acceso a esa herramienta específica."
+            })
         
-        new_state = dict(state)
-        new_state['tool_result'] = result
-        new_state['final_response'] = response_text
-        
-        # Registrar ejecución
+        # Registrar ejecución individual
         latency_ms = (time.time() - start_time) * 1000
+        total_latency += latency_ms
+        
         logger.log_tool_execution(
             session_id=session_id,
             turn_id=turn_id,
             tool_name=tool_name,
-            success=result.get('success', False) if result else False,
+            success=execution_results[-1].get('result', {}).get('success', False) if execution_results[-1].get('result') else False,
             latency_ms=latency_ms
         )
-        
-    elif tool_name.startswith('mcp.'):
-        # Extraer tool_name real (quitando prefijo mcp.)
-        mcp_tool = tool_name.split('.', 1)[1]
-        result = execute_mcp_tool(mcp_tool, arguments)
-        
-        if result.get('success'):
-            response_text = result.get('response', 'Operación completada')
-        else:
-            response_text = f"❌ Error en herramienta MCP: {result.get('error', 'Desconocido')}"
-        
-        new_state = dict(state)
-        new_state['tool_result'] = result
-        new_state['final_response'] = response_text
-        
-    else:
-        # Tool desconocida, fallback a chat
-        new_state = dict(state)
-        new_state['final_response'] = "No tengo acceso a esa herramienta específica."
+    
+    # Consolidar respuestas
+    final_response = ""
+    for i, exec_result in enumerate(execution_results):
+        if i > 0:
+            final_response += "\n" + "-" * 40 + "\n\n"
+        final_response += exec_result['response']
+    
+    new_state = dict(state)
+    new_state['execution_results'] = execution_results
+    new_state['final_response'] = final_response
     
     return new_state
 
