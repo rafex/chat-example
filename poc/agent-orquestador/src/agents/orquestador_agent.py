@@ -794,7 +794,7 @@ def route_request_node(state: OrquestadorState) -> OrquestadorState:
             
             # Añadir información sobre herramientas disponibles
             available_tools = tool_registry.list_tools()
-            tools_info = ", ".join([t['name'] for t in available_tools if t['available']])
+            tools_info = ", ".join([t.name for t in available_tools if t.available])
             
             # Preparar mensaje de error controlado
             new_state['error_message'] = (
@@ -936,7 +936,7 @@ def generic_chat_node(state: OrquestadorState) -> OrquestadorState:
         if config.is_strict_mode():
             # En modo strict, informar sobre límites del sistema
             available_tools = tool_registry.list_tools()
-            tools_info = ", ".join([t['name'] for t in available_tools if t['available']])
+            tools_info = ", ".join([t.name for t in available_tools if t.available])
             response_text += f"\n Herramientas disponibles: {tools_info}"
             response_text += "\n El sistema no inventa capacidades inexistentes."
         
