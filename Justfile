@@ -1,9 +1,10 @@
 # justfile para tareas operativas
 # Responsabilidad única: Task runner (ejecución y tareas operativas)
+# Las dependencias de construcción están en Makefile
 
 set dotenv-load
 
-# Variables
+# Variables de entornos virtuales
 VENV_CHAT := "poc/chatCLI/venv"
 VENV_WEATHER := "poc/agent-weather/venv"
 VENV_ORQUESTADOR := "poc/agent-orquestador/venv"
@@ -15,33 +16,67 @@ set fallback
 _default:
     @just --list
 
-# Configurar el entorno (llama a make)
+# Configurar el entorno (delega en make - sistema de build)
 setup:
+    @echo "Configurando entornos virtuales..."
     make all
 
 # Ejecutar la aplicación CLI
 run:
+    @echo "Iniciando Chat CLI..."
     {{VENV_CHAT}}/bin/python poc/chatCLI/src/chat_cli.py
 
 # Ejecutar pruebas de cada proyecto
 test-weather:
+    @echo "Ejecutando pruebas de agent-weather..."
     {{VENV_WEATHER}}/bin/python -m pytest poc/agent-weather/src/tests/ -v
 
 test-orquestador:
+    @echo "Ejecutando pruebas de agent-orquestador..."
     {{VENV_ORQUESTADOR}}/bin/python -m pytest poc/agent-orquestador/src/tests/ -v
 
 test-chat:
+    @echo "Ejecutando pruebas de chatCLI..."
     {{VENV_CHAT}}/bin/python -m pytest poc/chatCLI/src/tests/ -v
 
+# Ejecutar todas las pruebas
 test: test-weather test-orquestador test-chat
 
 # Limpieza (delega en make)
 clean:
+    @echo "Limpiando entornos virtuales..."
     make clean
 
 # Verificar entornos
 check:
-    @echo "=== Python Version ==="
-    {{VENV_CHAT}}/bin/python --version
-    {{VENV_WEATHER}}/bin/python --version
-    {{VENV_ORQUESTADOR}}/bin/python --version
+    @echo "=== Verificación de Entornos Virtuales ==="
+    @echo ""
+    @echo "Chat CLI:"
+    @if [ -d "{{VENV_CHAT}}" ]; then \
+        {{VENV_CHAT}}/bin/python --version 2>/dev/null || echo "⚠️  Entorno no inicializado"; \
+    else \
+        echo "⚠️  Entorno no existe"; \
+    fi
+    @echo ""
+    @echo "Agent Weather:"
+    @if [ -d "{{VENV_WEATHER}}" ]; then \
+        {{VENV_WEATHER}}/bin/python --version 2>/dev/null || echo "⚠️  Entorno no inicializado"; \
+    else \
+        echo "⚠️  Entorno no existe"; \
+    fi
+    @echo ""
+    @echo "Agent Orquestador:"
+    @if [ -d "{{VENV_ORQUESTADOR}}" ]; then \
+        {{VENV_ORQUESTADOR}}/bin/python --version 2>/dev/null || echo "⚠️  Entorno no inicializado"; \
+    else \
+        echo "⚠️  Entorno no existe"; \
+    fi
+
+# Listar herramientas disponibles
+tools:
+    @echo "Herramientas disponibles en orquestador:"
+    @if [ -d "{{VENV_ORQUESTADOR}}" ]; then \
+        {{VENV_ORQUESTADOR}}/bin/python -c "from src.registry.tool_registry import tool_registry; tool_registry.list_tools()" 2>/dev/null || echo "⚠️  No se pudo cargar el registro de herramientas"; \
+    else \
+        echo "⚠️  Entorno no existe"; \
+    fi
