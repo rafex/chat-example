@@ -100,7 +100,7 @@ class LLMOrchestrator:
             description += f"- {name}: {desc}\n"
         return description
 
-    def _call_llm(self, prompt: str) -> str:
+    def _call_llm(self, prompt: str, system_msg: str = "") -> str:
         """Llama a DeepSeek LLM"""
         try:
             # Importar servicio de LLM local
@@ -113,8 +113,11 @@ class LLMOrchestrator:
             from deepseek_service import LLMProviderService
 
             service = LLMProviderService()
-            # Usar el método chat de LLMProviderService
-            response = service.chat([{"role": "user", "content": prompt}])
+            messages = []
+            if system_msg:
+                messages.append({"role": "system", "content": system_msg})
+            messages.append({"role": "user", "content": prompt})
+            response = service.chat(messages)
             return response
         except Exception as e:
             print(f"⚠️ Error llamando a LLM: {e}")
@@ -141,37 +144,39 @@ class LLMOrchestrator:
         try:
             # Paso 1: Analizar intención con LLM
             tools_desc = self.get_tools_description()
-            analysis_prompt = f"""Eres un asistente inteligente que analiza solicitudes de usuarios y las mapea a herramientas disponibles.
 
-IMPORTANTE: Siempre debes usar las herramientas disponibles cuando sea relevante.
+            system_msg = (
+                "Eres el módulo de selección de herramientas de un asistente conversacional. "
+                "Tu ÚNICA tarea es analizar la solicitud y decidir qué herramientas invocar. "
+                "TIENES ACCESO REAL a todas las herramientas listadas: puedes y DEBES usarlas. "
+                "NUNCA digas que no puedes acceder a datos en tiempo real; si la herramienta existe, ÚSALA. "
+                "Responde EXCLUSIVAMENTE con un objeto JSON válido, sin texto adicional."
+            )
 
-Herramientas disponibles:
+            analysis_prompt = f"""Herramientas disponibles (TIENES ACCESO REAL A TODAS):
 {tools_desc}
 
-Input del usuario: "{user_input}"
+Solicitud del usuario: "{user_input}"
 
-Analiza y responde SIEMPRE en JSON VÁLIDO con esta estructura exacta:
+INSTRUCCIONES OBLIGATORIAS:
+1. Si el usuario menciona clima, tiempo, temperatura, lluvia, viaje a algún lugar → USA "get_current_weather" con la ubicación en inglés.
+2. Si el usuario pide saludo → USA "say_hello" con el código de idioma (es, en, fr, pt, zh, ru, ar, hi, bn, ur).
+3. Si el usuario pregunta por idiomas soportados → USA "get_hello_languages".
+4. Puedes usar MÚLTIPLES herramientas si la solicitud lo requiere.
+5. El campo "tools" JAMÁS debe estar vacío si existe una herramienta relevante.
+
+Ejemplos de ubicaciones: "nueva zelanda" → "New Zealand", "grecia" → "Greece", "japón" → "Japan".
+
+Responde SOLO con este JSON (sin markdown, sin explicaciones):
 {{
-    "intention": "descripción clara de lo que el usuario pide",
+    "intention": "descripción de lo que el usuario pide",
     "tools": [
-        {{
-            "name": "nombre exacto de la herramienta a usar",
-            "parameters": {{"param": "valor"}}
-        }}
+        {{"name": "nombre_herramienta", "parameters": {{"param": "valor"}}}}
     ],
-    "reasoning": "por qué usaste esas herramientas"
-}}
+    "reasoning": "por qué usas esas herramientas"
+}}"""
 
-REGLAS:
-- Si el usuario pide un saludo: usa "say_hello" con el parámetro lang
-- Si el usuario pregunta sobre clima: usa "get_current_weather" con location
-- Si el usuario menciona idiomas: usa "get_hello_languages"
-- SIEMPRE intenta usar una herramienta si es relevante
-- El campo "tools" NUNCA debe estar vacío si hay herramientas relevantes
-
-Responde SOLO con JSON válido, sin markdown ni explicaciones adicionales:"""
-
-            analysis_result = self._call_llm(analysis_prompt)
+            analysis_result = self._call_llm(analysis_prompt, system_msg=system_msg)
 
             try:
                 # Intentar extraer JSON del response
@@ -249,19 +254,20 @@ Responde SOLO con JSON válido, sin markdown ni explicaciones adicionales:"""
 
             # Paso 3: Generar respuesta final con LLM
             if tool_results:
-                final_prompt = f"""Basándote en los siguientes resultados de herramientas,
-genera una respuesta amable y útil al usuario.
+                final_system = (
+                    "Eres un asistente conversacional amable. "
+                    "Tienes acceso a datos REALES obtenidos por herramientas. "
+                    "USA SIEMPRE los datos proporcionados y NUNCA digas que no tienes acceso a información en tiempo real. "
+                    "Si hay datos de clima, preséntales de forma clara e incluye recomendaciones prácticas."
+                )
+                final_prompt = f"""El usuario dijo: "{user_input}"
 
-Intención detectada: {analysis.get('intention')}
-
-Resultados de herramientas:
+Datos obtenidos por las herramientas (son REALES y actuales):
 {json.dumps(tool_results, indent=2, ensure_ascii=False)}
 
-Input original del usuario: {user_input}
+Genera una respuesta amable, clara y útil basada EXCLUSIVAMENTE en estos datos reales."""
 
-Responde de forma natural y útil:"""
-
-                final_response = self._call_llm(final_prompt)
+                final_response = self._call_llm(final_prompt, system_msg=final_system)
             else:
                 final_response = (
                     "Entiendo tu solicitud: " + analysis.get("intention", "")
