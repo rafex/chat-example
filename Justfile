@@ -94,17 +94,7 @@ clean-memory:
 memory-status:
     @echo "Estado del servicio de memoria:"
     @if [ -d "{{VENV_ORQUESTADOR}}" ]; then \
-        {{VENV_ORQUESTADOR}}/bin/python -c "\
-import os; \
-from pathlib import Path; \
-memory_dir = Path.home() / '.agentes-langgraph' / 'memory'; \
-if memory_dir.exists(): \
-    files = list(memory_dir.glob('*.faiss')); \
-    print(f'✅ Índices FAISS encontrados: {len(files)}'); \
-    for f in files: \
-        print(f'  - {f.name} ({f.stat().st_size / 1024:.1f} KB)'); \
-else: \
-    print('ℹ️  No se encontró directorio de memoria')" 2>/dev/null || echo "⚠️  No se pudo verificar el estado"; \
+        {{VENV_ORQUESTADOR}}/bin/python -c "from pathlib import Path; memory_dir = Path.home() / '.agentes-langgraph' / 'memory'; files = list(memory_dir.glob('*.faiss')) if memory_dir.exists() else []; print(f'✅ Índices FAISS encontrados: {len(files)}'); [print(f'  - {f.name} ({f.stat().st_size / 1024:.1f} KB)') for f in files] if files else print('ℹ️  No se encontraron índices')" 2>/dev/null || echo "⚠️  No se pudo verificar el estado"; \
     else \
         echo "⚠️  Entorno no existe"; \
     fi
@@ -139,7 +129,7 @@ mode-status:
 clean-sessions:
     @echo "Limpiando sesiones activas..."
     @if [ -d "poc/agent-orquestador/venv" ]; then \
-        poc/agent-orquestador/venv/bin/python -c "from src.services.session_service import cleanup_sessions; cleanup_sessions(); print('✅ Sesiones limpiadas')" 2>/dev/null || echo "⚠️  No se pudieron limpiar las sesiones"; \
+        poc/agent-orquestador/venv/bin/python -c "import sys; sys.path.insert(0, 'poc/agent-orquestador/src'); from services.session_service import cleanup_sessions; cleanup_sessions(); print('✅ Sesiones limpiadas')" 2>/dev/null || echo "⚠️  No se pudieron limpiar las sesiones"; \
     else \
         echo "⚠️  Entorno no existe"; \
     fi
