@@ -213,11 +213,24 @@ class AgentOrquestador:
         """
         user_input_lower = user_input.lower()
         
-        # Verificar si es consulta de clima
-        weather_match = any(keyword in user_input_lower for keyword in self.weather_keywords)
+        # Verificar si es consulta de clima (usando palabras completas, no subcadenas)
+        # Usamos \b para asegurar coincidencia de palabras completas
+        weather_match = False
+        for keyword in self.weather_keywords:
+            # Patrón de expresión regular para palabra completa
+            pattern = r'\b' + re.escape(keyword) + r'\b'
+            if re.search(pattern, user_input_lower):
+                weather_match = True
+                break
         
-        # Verificar si es comando MCP
-        mcp_match = any(keyword in user_input_lower for keyword in self.mcp_keywords)
+        # Verificar si es comando MCP (usando palabras completas)
+        mcp_match = False
+        for keyword in self.mcp_keywords:
+            # Patrón de expresión regular para palabra completa
+            pattern = r'\b' + re.escape(keyword) + r'\b'
+            if re.search(pattern, user_input_lower):
+                mcp_match = True
+                break
         
         # Verificar si es un comando MCP directo
         mcp_direct_command = user_input.strip().startswith(tuple(self.mcp_tool_names))
