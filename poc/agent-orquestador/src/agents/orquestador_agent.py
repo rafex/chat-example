@@ -56,6 +56,14 @@ for path in paths_to_add:
         except ImportError:
             GUARD_AVAILABLE = False
             get_guard_agent = None
+        
+        # Importar servicio de prompts
+        try:
+            from services.prompt_service import get_prompt_service
+            PROMPT_SERVICE_AVAILABLE = True
+        except ImportError:
+            PROMPT_SERVICE_AVAILABLE = False
+            get_prompt_service = None
     except ImportError as e:
         raise ImportError(f"No se pudo importar los módulos necesarios: {e}")
     try:

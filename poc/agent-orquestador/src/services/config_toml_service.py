@@ -34,6 +34,13 @@ class ConfigService:
         
         # Cargar variables de entorno
         self._env_vars = self._load_env_vars()
+        
+        # Inicializar servicio de prompts
+        try:
+            from services.prompt_service import get_prompt_service
+            self.prompt_service = get_prompt_service()
+        except ImportError:
+            self.prompt_service = None
     
     def _load_config(self) -> Dict[str, Any]:
         """Carga la configuración desde el archivo TOML"""
@@ -123,6 +130,35 @@ class ConfigService:
     def get_guard_config(self) -> Dict[str, Any]:
         """Obtiene la configuración del agente de seguridad"""
         return self.get_agent_config('guard')
+    
+    def get_prompt(self, agent_name: str, prompt_type: str = "system_prompt") -> str:
+        """
+        Obtiene el prompt de sistema para un agente
+        
+        Args:
+            agent_name: Nombre del agente
+            prompt_type: Tipo de prompt a obtener
+            
+        Returns:
+            Texto del prompt
+        """
+        if self.prompt_service:
+            return self.prompt_service.get_prompt(agent_name, prompt_type)
+        
+        # Fallback si no hay servicio de prompts
+        return ""
+    
+    def get_agent_prompt(self, agent_name: str) -> str:
+        """
+        Obtiene el prompt de sistema para un agente
+        
+        Args:
+            agent_name: Nombre del agente
+            
+        Returns:
+            Texto del prompt
+        """
+        return self.get_prompt(agent_name, "system_prompt")
 
 
 # Instancia global del servicio de configuración
