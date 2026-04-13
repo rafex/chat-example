@@ -33,18 +33,45 @@ class ShortTermMemory:
         self.session_id: Optional[str] = None
     
     def add_turn(self, role: str, content: str, metadata: Optional[Dict] = None):
-        """Añade un turno a la memoria conversacional"""
+        """Añade un turno a la memoria conversacional aplicando política de memoria"""
+        # Verificar política de memoria
+        if not self._should_store_message(role, content):
+            return
+        
         turn = {
             "role": role,
             "content": content,
             "timestamp": datetime.now().isoformat(),
-            "metadata": metadata or {}
+            "metadata": metadata or {},
+            "memory_type": metadata.get("memory_type", "general") if metadata else "general",
+            "importance": metadata.get("importance", 0.5) if metadata else 0.5
         }
         self.conversation_history.append(turn)
         
         # Mantener solo los últimos N turnos
         if len(self.conversation_history) > self.max_turns:
             self.conversation_history = self.conversation_history[-self.max_turns:]
+    
+    def _should_store_message(self, role: str, content: str) -> bool:
+        """Verifica si un mensaje debe guardarse según la política de memoria
+        
+        Args:
+            role: 'user' o 'assistant'
+            content: Contenido del mensaje
+            
+        Returns:
+            True si el mensaje debe guardarse, False si no
+        """
+        if not content:
+            return False
+        
+        # No guardar saludos triviales
+        greetings = ['hola', 'hello', 'hi', 'buenos días', 'buenas tardes', 'buenas noches', 'adiós', 'bye']
+        content_lower = content.lower().strip()
+        if any(greeting in content_lower for greeting in greetings) and len(content.split()) < 3:
+            return False
+        
+        return True
     
     def get_recent_history(self, n_turns: Optional[int] = None) -> List[Dict[str, Any]]:
         """Obtiene los últimos N turnos de la conversación"""
@@ -91,7 +118,7 @@ class SemanticMemory:
             self.load()
     
     def add_memory(self, text: str, embedding: List[float], metadata: Optional[Dict] = None):
-        """Añade un elemento a la memoria semántica"""
+        """Añade un elemento a la memoria semántica aplicando política de memoria"""
         # Convertir embedding a array de numpy
         embedding_array = np.array([embedding], dtype=np.float32)
         
@@ -101,12 +128,21 @@ class SemanticMemory:
         # Añadir al índice
         self.index.add(embedding_array)
         
-        # Guardar metadata
+        # Preparar metadatos con los campos recomendados
+        metadata_dict = metadata or {}
+        
+        # Guardar metadata con metadatos recomendados
         self.metadata.append({
             "text": text,
-            "metadata": metadata or {},
+            "metadata": metadata_dict,
             "timestamp": datetime.now().isoformat(),
-            "index_id": len(self.metadata)
+            "index_id": len(self.metadata),
+            "source": metadata_dict.get("source", "unknown"),
+            "tool_name": metadata_dict.get("tool_name", ""),
+            "session_id": metadata_dict.get("session_id", ""),
+            "turn_id": metadata_dict.get("turn_id", 0),
+            "importance": metadata_dict.get("importance", 0.5),
+            "memory_type": metadata_dict.get("memory_type", "general")
         })
     
     def retrieve(self, query_embedding: List[float], k: int = 5) -> List[Dict[str, Any]]:
@@ -196,11 +232,80 @@ class MemoryService:
         self.short_term.add_turn(role, content, {"session_id": self.session_id})
     
     def add_semantic_memory(self, text: str, embedding: List[float], metadata: Optional[Dict] = None):
-        """Añade un elemento a la memoria semántica"""
+        """Añade un elemento a la memoria semántica aplicando política de memoria"""
         if self.semantic:
+            # Verificar política de memoria
+            if not self._should_store_semantic(text, metadata):
+                return
+            
             full_metadata = metadata or {}
             full_metadata["session_id"] = self.session_id
             self.semantic.add_memory(text, embedding, full_metadata)
+    
+    def _should_store_semantic(self, text: str, metadata: Optional[Dict] = None) -> bool:
+        """Verifica si un elemento debe guardarse en memoria semántica
+        
+        Args:
+            text: Texto a almacenar
+            metadata: Metadatos adicionales
+            
+        Returns:
+            True si debe guardarse, False si no
+        """
+        if not text:
+            return False
+        
+        # Verificar si es contenido trivial
+        if self._is_trivial_content(text, 'user'):
+            return False
+        
+        return True
+    
+    def _is_trivial_content(self, content: str, role: str) -> bool:
+        """Verifica si el contenido es trivial y no debe guardarse
+        
+        Args:
+            content: Contenido del mensaje
+            role: 'user' o 'assistant'
+            
+        Returns:
+            True si es contenido trivial, False si no
+        """
+        if not content:
+            return True
+        
+        # No guardar saludos triviales
+        greetings = ['hola', 'hello', 'hi', 'buenos días', 'buenas tardes', 'buenas noches', 'adiós', 'bye']
+        content_lower = content.lower().strip()
+        if any(greeting in content_lower for greeting in greetings) and len(content.split()) < 3:
+            return True
+        
+        # No guardar respuestas genéricas del asistente
+        if role == 'assistant':
+            generic_responses = [
+                'entiendo', 'de acuerdo', 'ok', 'vale', 'correcto',
+                'puedo ayudarte', 'en qué puedo ayudarte', '¿en qué puedo ayudarte?'
+            ]
+            if any(response in content_lower for response in generic_responses) and len(content.split()) < 5:
+                return True
+        
+        return False
+    
+    def _is_duplicate(self, content: str) -> bool:
+        """Verifica si el contenido es duplicado
+        
+        Args:
+            content: Contenido del mensaje
+            
+        Returns:
+            True si es duplicado, False si no
+        """
+        # Verificar en memoria conversacional
+        for turn in self.short_term.conversation_history[-5:]:  # Últimos 5 turnos
+            if turn['content'] == content:
+                return True
+        
+        return False
     
     def get_context(self, query_embedding: Optional[List[float]] = None, 
                    k_semantic: int = 3) -> Dict[str, Any]:
