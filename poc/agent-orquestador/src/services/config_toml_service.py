@@ -8,6 +8,20 @@ import toml
 from typing import Dict, Any, Optional
 from pathlib import Path
 
+# Cargar variables de entorno desde .env
+try:
+    from dotenv import load_dotenv
+    # Buscar .env en el directorio del proyecto
+    current_dir = Path(__file__).parent.parent.parent.parent
+    env_path = current_dir / ".env"
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path)
+    else:
+        # Intentar con ruta relativa
+        load_dotenv()
+except ImportError:
+    pass  # python-dotenv no está disponible
+
 
 class ConfigService:
     """Servicio de configuración basado en TOML"""
