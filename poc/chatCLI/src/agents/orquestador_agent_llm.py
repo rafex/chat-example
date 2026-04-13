@@ -25,13 +25,13 @@ except ImportError as e:
     print(f"⚠️ MCPClient no disponible: {e}")
     MCPClient = None
 
-# Nota: El weather agent no está habilitado en chatCLI debido a conflictos de path
-# El agente de clima se puede invocar directamente desde agent-weather/
-# Para chatCLI, nos enfocamos en MCP tools que se registran dinámicamente
-
-
-# Nota: get_weather_agent() no está implementado en chatCLI debido a conflictos de path
-# El weather agent se ejecuta desde agent-weather/ como un módulo independiente
+try:
+    from services.agent_client import call_weather_agent as _weather_fn
+    _WEATHER_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ AgentClient no disponible: {e}")
+    _weather_fn = None
+    _WEATHER_AVAILABLE = False
 
 
 class LLMOrchestrator:
@@ -69,12 +69,27 @@ class LLMOrchestrator:
         self._register_internal_tools()
 
     def _register_internal_tools(self):
-        """Registra herramientas internas
-
-        Nota: En chatCLI usamos principalmente herramientas MCP.
-        Las herramientas internas (como weather) se pueden agregar aquí si es necesario.
-        """
-        pass  # Las herramientas MCP se registran automáticamente en __init__
+        """Registra agentes internos accesibles via AgentClient (subprocess)."""
+        if _WEATHER_AVAILABLE:
+            self.available_tools["agent/get_current_weather"] = {
+                "name": "get_current_weather",
+                "description": (
+                    "Consulta el clima actual de una ciudad o país usando el agente meteorológico. "
+                    "Úsala SIEMPRE que el usuario pregunte por el tiempo, temperatura, lluvia, "
+                    "clima, condiciones meteorológicas o planee un viaje a algún lugar."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "location": {
+                            "type": "string",
+                            "description": "Ciudad o país en español o inglés (ej: 'Atenas', 'Grecia', 'Madrid', 'Athens,GR')"
+                        }
+                    },
+                    "required": ["location"],
+                },
+            }
+            print("✅ Agente de clima registrado")
 
     def get_tools_description(self) -> str:
         """Genera descripción de herramientas disponibles para el LLM"""
@@ -292,6 +307,16 @@ Responde de forma natural y útil:"""
                         return self.mcp_client.call_tool(tool_name, parameters)
                     else:
                         raise RuntimeError("MCP client no disponible")
+
+                # Si es agente externo (subprocess via AgentClient)
+                elif tool_id.startswith("agent/"):
+                    if tool_name == "get_current_weather" and _weather_fn:
+                        location = parameters.get("location")
+                        if not location:
+                            raise ValueError("Parámetro 'location' requerido")
+                        return _weather_fn(location)
+                    else:
+                        raise RuntimeError(f"Agente externo '{tool_name}' no implementado")
 
         raise ValueError(f"Herramienta no encontrada: {tool_name}")
 
