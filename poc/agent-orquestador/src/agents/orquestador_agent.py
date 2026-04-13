@@ -691,6 +691,18 @@ def validate_decision_node(state: OrquestadorState) -> OrquestadorState:
     tool_name = llm_decision.get('tool_name')
     arguments = llm_decision.get('arguments', {})
     
+    # Convertir arguments de cadena a diccionario si es necesario
+    if isinstance(arguments, str):
+        try:
+            # Intentar parsear formato "key=value,key2=value2"
+            if '=' in arguments:
+                arguments = dict(item.split("=", 1) for item in arguments.split(",") if "=" in item)
+            else:
+                arguments = {}
+        except Exception as e:
+            print(f"⚠️  Error parseando arguments como cadena: {e}")
+            arguments = {}
+    
     # Medir tiempo de validación
     start_time = time.time()
     
