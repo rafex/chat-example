@@ -208,6 +208,7 @@ def analyze_intent_by_rules(user_input: str, history: Sequence[dict]) -> dict:
             "intent": "weather_query",
             "confidence": 0.9 if location else 0.6,
             "tool_type": "weather",
+            "tool_name": "weather.get_current_weather",
             "arguments": {"location": location} if location else {}
         }
     else:
@@ -215,6 +216,7 @@ def analyze_intent_by_rules(user_input: str, history: Sequence[dict]) -> dict:
             "intent": "general_chat",
             "confidence": 0.7,
             "tool_type": "chat",
+            "tool_name": "chat.respond",
             "arguments": {}
         }
 
