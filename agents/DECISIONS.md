@@ -1,16 +1,16 @@
 # DECISIONS
 
-## [DECISION-001] Uso de TF-IDF Manual en lugar de SentenceTransformers
+## [DECISION-001] Uso de SentenceTransformers para embeddings
 
 - **Date:** 2026-04-12
 - **Status:** accepted
-- **Context:** La biblioteca SentenceTransformers no está disponible en el entorno actual. Se necesita una solución de embeddings para memoria semántica.
-- **Decision:** Implementar TF-IDF manualmente para generar embeddings y recuperación de memoria semántica.
+- **Context:** Necesidad de embeddings de alta calidad para memoria semántica con FAISS.
+- **Decision:** Usar SentenceTransformers como backend principal para embeddings, con TF-IDF como fallback automático.
 - **Consequences:**
-  - Positivo: No requiere instalación de bibliotecas externas adicionales
-  - Positivo: Mayor control sobre el proceso de embedding
-  - Negativo: Menor precisión que modelos pre-entrenados
-  - Negativo: Requiere implementación manual de lógica de similitud
+  - Positivo: Mejor calidad de embeddings que TF-IDF manual
+  - Positivo: Embeddings de dimensión fija (384) para consistencia
+  - Positivo: Fallback automático a TF-IDF si SentenceTransformers no está disponible
+  - Negativo: Requiere instalación de bibliotecas adicionales (torch, sentence-transformers)
 
 ## [DECISION-002] Estructura de Proyecto SpecNative
 

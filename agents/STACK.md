@@ -16,10 +16,10 @@
 ## Infrastructure
 - **Memoria Dual:**
   - Memoria corta conversacional: últimos 10 turnos
-  - Memoria semántica: FAISS + TF-IDF manual (DECISION-001)
+  - Memoria semántica: FAISS + SentenceTransformers (DECISION-001)
+  - Fallback automático a TF-IDF si SentenceTransformers no está disponible
 - Proveedores LLM: OpenAI, DeepSeek, OpenRouter
 - API clima: OpenWeatherMap
-- **Nota**: No se usa SentenceTransformers (decisión documentada en DECISION-001)
 
 ## Project Structure
 ```

@@ -476,7 +476,7 @@ def retrieve_memory_node(state: OrquestadorState) -> OrquestadorState:
         from session_service import get_session_manager
         
         # Obtener servicios
-        embedding_service = get_embedding_service(backend="tfidf")
+        embedding_service = get_embedding_service(backend="transformers")
         session_id = state.get('session_id', 'default')
         
         # Obtener o crear sesión

@@ -23,6 +23,8 @@ dependencies = [
     "tomli>=2.0.0",
     "openai>=1.0.0",
     "scikit-learn>=1.0.0",
+    "sentence-transformers>=3.0.0",
+    "torch>=2.0.0",
 ]
 
 [project.optional-dependencies]
