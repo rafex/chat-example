@@ -255,6 +255,7 @@ class AgentOrquestador:
                 "intent": "weather_query",
                 "confidence": 0.9 if location else 0.6,
                 "tool_type": tool_type,
+                "tool_name": "weather.get_current_weather",
                 "arguments": arguments
             }
         
@@ -280,6 +281,7 @@ class AgentOrquestador:
                         "intent": f"mcp_{tool_name}",
                         "confidence": 0.95,
                         "tool_type": tool_type,
+                        "tool_name": f"mcp.{tool_name}",
                         "arguments": {"tool_name": tool_name, **arguments}
                     }
             
@@ -288,6 +290,7 @@ class AgentOrquestador:
                 "intent": "mcp_greet",
                 "confidence": 0.8,
                 "tool_type": tool_type,
+                "tool_name": "mcp.say_hello",
                 "arguments": {"tool_name": "say_hello"}
             }
         
@@ -298,6 +301,7 @@ class AgentOrquestador:
                 "intent": "general_chat",
                 "confidence": 0.7,
                 "tool_type": tool_type,
+                "tool_name": "chat.respond",
                 "arguments": {}
             }
     
