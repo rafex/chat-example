@@ -14,7 +14,9 @@
   - python-dotenv>=1.0.0
 
 ## Infrastructure
-- Memoria semántica: FAISS + TF-IDF manual (DECISION-001)
+- **Memoria Dual:**
+  - Memoria corta conversacional: últimos 10 turnos
+  - Memoria semántica: FAISS + TF-IDF manual (DECISION-001)
 - Proveedores LLM: OpenAI, DeepSeek, OpenRouter
 - API clima: OpenWeatherMap
 - **Nota**: No se usa SentenceTransformers (decisión documentada en DECISION-001)

@@ -45,3 +45,23 @@
   - Positivo: Mayor control sobre comportamiento del sistema
   - Negativo: Requiere implementación en orquestador y validadores
   - **Acción requerida:** Implementar variable de entorno `ORCHESTRATOR_MODE=strict|flexible`
+
+## [DECISION-005] Arquitectura de Memoria Dual
+
+- **Date:** 2026-04-12
+- **Status:** accepted
+- **Context:** Necesidad de mantener contexto conversacional inmediato y recuperación semántica de información relevante.
+- **Decision:** Implementar sistema de memoria dual que combine:
+  1. **Memoria Corta Conversacional:** Últimos turnos para continuidad inmediata
+  2. **Memoria Semántica con FAISS:** Recuperación de hechos históricos relevantes
+  
+  **Regla clave:** FAISS no debe reemplazar el historial reciente. Ambas memorias deben convivir.
+- **Consequences:**
+  - Positivo: Mejor contexto para el LLM sin perder información relevante histórica
+  - Positivo: Separación clara entre contexto inmediato y conocimiento persistente
+  - Negativo: Complejidad adicional en la implementación
+  - Negativo: Requiere gestión de embeddings y vector store
+- **Implementación:**
+  - Servicio `MemoryService` con `ShortTermMemory` y `SemanticMemory`
+  - Integración en `retrieve_memory_node` del orquestador
+  - Persistencia automática de índices FAISS en `~/.agentes-langgraph/memory/`

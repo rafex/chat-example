@@ -80,3 +80,31 @@ tools:
     else \
         echo "⚠️  Entorno no existe"; \
     fi
+
+# Limpiar memoria semántica
+clean-memory:
+    @echo "Limpiando memoria semántica..."
+    @if [ -d "{{VENV_ORQUESTADOR}}" ]; then \
+        {{VENV_ORQUESTADOR}}/bin/python -c "from src.services.memory_service import clear_memory_cache; clear_memory_cache(); print('✅ Memoria limpiada')" 2>/dev/null || echo "⚠️  No se pudo limpiar la memoria"; \
+    else \
+        echo "⚠️  Entorno no existe"; \
+    fi
+
+# Verificar estado de la memoria
+memory-status:
+    @echo "Estado del servicio de memoria:"
+    @if [ -d "{{VENV_ORQUESTADOR}}" ]; then \
+        {{VENV_ORQUESTADOR}}/bin/python -c "\
+import os; \
+from pathlib import Path; \
+memory_dir = Path.home() / '.agentes-langgraph' / 'memory'; \
+if memory_dir.exists(): \
+    files = list(memory_dir.glob('*.faiss')); \
+    print(f'✅ Índices FAISS encontrados: {len(files)}'); \
+    for f in files: \
+        print(f'  - {f.name} ({f.stat().st_size / 1024:.1f} KB)'); \
+else: \
+    print('ℹ️  No se encontró directorio de memoria')" 2>/dev/null || echo "⚠️  No se pudo verificar el estado"; \
+    else \
+        echo "⚠️  Entorno no existe"; \
+    fi

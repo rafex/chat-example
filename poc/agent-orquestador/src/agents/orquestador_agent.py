@@ -456,11 +456,11 @@ def load_context_node(state: OrquestadorState) -> OrquestadorState:
 
 
 def retrieve_memory_node(state: OrquestadorState) -> OrquestadorState:
-    """Nodo: Recupera memoria semántica relevante desde FAISS"""
+    """Nodo: Recupera memoria semántica relevante desde FAISS usando memoria dual"""
     import sys
     import os
     
-    # Añadir path del servicio de embeddings si no está
+    # Añadir path de servicios si no está
     agent_orquestador_src = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     services_path = os.path.join(agent_orquestador_src, 'services')
     if services_path not in sys.path:
@@ -468,43 +468,60 @@ def retrieve_memory_node(state: OrquestadorState) -> OrquestadorState:
     
     try:
         from embedding_service import get_embedding_service
+        from memory_service import get_memory_service
         
-        # Obtener servicio de embeddings (TF-IDF según DECISION-001)
+        # Obtener servicios
         embedding_service = get_embedding_service(backend="tfidf")
+        session_id = state.get('session_id', 'default')
+        memory_service = get_memory_service(session_id)
         
         # Obtener mensaje del usuario
         user_message = state.get('user_message', state.get('user_input', ''))
         
         if not user_message:
-            # Si no hay mensaje, devolver vacío
+            # Si no hay mensaje, devolver contexto de memoria existente
             new_state = dict(state)
             new_state['retrieved_memories'] = []
+            new_state['conversation_history'] = state.get('conversation_history', [])
             return new_state
         
         # Generar embedding para el mensaje del usuario
         try:
             user_embedding = embedding_service.embed_single(user_message)
             
-            # TODO: Aquí iría la búsqueda en FAISS
-            # Por ahora, simulamos recuperación vacía con log
+            # Obtener contexto de memoria dual
+            context = memory_service.get_context(
+                query_embedding=user_embedding,
+                k_semantic=3
+            )
+            
+            # Añadir turno actual a memoria conversacional
+            memory_service.add_conversation_turn("user", user_message)
+            
+            # Registrar generación de embedding
             session_id = state.get('session_id', 'unknown')
             turn_id = state.get('turn_id', 0)
             
             logger.log_event(
                 session_id=session_id,
                 turn_id=turn_id,
-                event_type="embedding_generation",
+                event_type="memory_retrieval",
                 status="success",
-                message=f"Embedding generado con backend: {embedding_service.backend_name}",
+                message=f"Memoria recuperada con {len(context['semantic'])} elementos semánticos",
                 details={
                     "backend": embedding_service.backend_name,
                     "dimension": embedding_service.dimension,
-                    "message_length": len(user_message)
+                    "short_term_size": len(context['short_term']),
+                    "semantic_size": len(context['semantic'])
                 }
             )
             
-            # Simulación de recuperación (en implementación real, buscaría en FAISS)
-            retrieved_memories = []
+            # Combinar historial reciente con memoria semántica
+            retrieved_memories = context['semantic']
+            
+            # Actualizar conversation_history en el estado
+            conversation_history = state.get('conversation_history', [])
+            conversation_history.extend(context['short_term'])
             
         except Exception as e:
             session_id = state.get('session_id', 'unknown')
@@ -512,18 +529,21 @@ def retrieve_memory_node(state: OrquestadorState) -> OrquestadorState:
             logger.log_error(
                 session_id=session_id,
                 turn_id=turn_id,
-                error_type="embedding_generation",
-                message=f"Error generando embedding: {str(e)}"
+                error_type="memory_retrieval",
+                message=f"Error en recuperación de memoria: {str(e)}"
             )
             retrieved_memories = []
-        
+            conversation_history = state.get('conversation_history', [])
+    
     except ImportError as e:
-        # Fallback si no está disponible el servicio de embeddings
-        print(f"⚠️  EmbeddingService no disponible: {e}")
+        # Fallback si no está disponible el servicio de memoria
+        print(f"⚠️  MemoryService no disponible: {e}")
         retrieved_memories = []
+        conversation_history = state.get('conversation_history', [])
     
     new_state = dict(state)
     new_state['retrieved_memories'] = retrieved_memories
+    new_state['conversation_history'] = conversation_history
     
     return new_state
 
