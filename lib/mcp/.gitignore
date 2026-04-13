@@ -1,6 +1,0 @@
-# Artefactos locales de ejemplos MCP
-dist/
-out/
-
-# Capturas o dumps de prueba si aparecen en ejercicios futuros
-*.trace

@@ -92,23 +92,88 @@ except ImportError as e:
 # IMPORTACIÓN DEL AGENTE ORQUESTADOR
 # ==============================================================================
 
-# Importar desde el directorio src de chatCLI (donde están los módulos copiados)
+# Ruta al MCP server
+MCP_SERVER_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))),
+    "..", "github", "rafex", "mcp-example", "mcp", "hello", "python", "server.py"
+)
+
+# Intentar usar orquestador con LLM primero (dinámico)
+ORQUESTADOR_AVAILABLE = False
+ORQUESTADOR_LLM_AVAILABLE = False
+run_weather_agent = None
+
 try:
-    from agents.orquestador_agent import run_orquestador, tool_registry
-    ORQUESTADOR_AVAILABLE = True
-    print("✅ Agente orquestador importado exitosamente")
-    print(f"   Herramientas disponibles: {len(tool_registry.list_tools())}")
-except ImportError as e:
-    ORQUESTADOR_AVAILABLE = False
-    print(f"⚠️  Agente orquestador no disponible: {e}")
-    
-    # Intentar fallback a agente meteorológico directo
+    # Intento 1: Importación directa
+    from agents.orquestador_agent_llm import run_orchestrator_llm, get_orchestrator
+    ORQUESTADOR_LLM_AVAILABLE = True
+    print("✅ Orquestador dinámico con LLM importado exitosamente")
+except ImportError as llm_e1:
     try:
-        from src.agents.weather_agent import run_weather_agent
-        print("✅ Usando agente meteorológico directo")
-    except ImportError as e2:
-        print(f"⚠️  Error importando agente meteorológico: {e2}")
-        run_weather_agent = None
+        # Intento 2: Importación dinámmica con importlib
+        import importlib.util
+        llm_spec = importlib.util.spec_from_file_location(
+            "orquestador_agent_llm",
+            os.path.join(current_dir, "agents", "orquestador_agent_llm.py")
+        )
+        llm_module = importlib.util.module_from_spec(llm_spec)
+        llm_spec.loader.exec_module(llm_module)
+
+        run_orchestrator_llm = llm_module.run_orchestrator_llm
+        get_orchestrator = llm_module.get_orchestrator
+        ORQUESTADOR_LLM_AVAILABLE = True
+        print("✅ Orquestador dinámico con LLM importado exitosamente (via spec)")
+    except Exception as llm_e2:
+        ORQUESTADOR_LLM_AVAILABLE = False
+        print(f"⚠️ Orquestador LLM no disponible: {llm_e1} / {llm_e2}")
+
+# Inicializar orquestador con MCP si está disponible
+if ORQUESTADOR_LLM_AVAILABLE:
+    try:
+        orchestrator = get_orchestrator(MCP_SERVER_PATH)
+        print(f"✅ MCP integrado: {len(orchestrator.available_tools)} herramientas disponibles")
+    except Exception as e:
+        print(f"⚠️ MCP no disponible: {e}")
+        try:
+            orchestrator = get_orchestrator(None)
+            print(f"ℹ️ Usando orquestador sin MCP: {len(orchestrator.available_tools)} herramientas internas")
+        except Exception as e2:
+            print(f"⚠️ Error inicializando orquestador: {e2}")
+            ORQUESTADOR_LLM_AVAILABLE = False
+
+    # Fallback al orquestador antiguo basado en reglas
+    try:
+        # Intento 1: Importación directa
+        from agents.orquestador_agent import run_orquestador, tool_registry
+        ORQUESTADOR_AVAILABLE = True
+        print("✅ Agente orquestador importado exitosamente")
+        print(f"   Herramientas disponibles: {len(tool_registry.list_tools())}")
+    except ImportError as e1:
+        try:
+            # Intento 2: Importación usando sys.path
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "orquestador_agent",
+                os.path.join(current_dir, "agents", "orquestador_agent.py")
+            )
+            orquestador_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(orquestador_module)
+
+            run_orquestador = orquestador_module.run_orquestador
+            tool_registry = orquestador_module.tool_registry
+            ORQUESTADOR_AVAILABLE = True
+            print("✅ Agente orquestador importado exitosamente (via spec)")
+            print(f"   Herramientas disponibles: {len(tool_registry.list_tools())}")
+        except Exception as e2:
+            print(f"⚠️  Agente orquestador no disponible: {e1} / {e2}")
+
+            # Intentar fallback a agente meteorológico directo
+            try:
+                from src.agents.weather_agent import run_weather_agent
+                print("✅ Usando agente meteorológico directo")
+            except ImportError as e3:
+                print(f"⚠️  Error importando agente meteorológico: {e3}")
+                run_weather_agent = None
 
 # Importar MCP Router
 try:
@@ -493,24 +558,60 @@ def main():
                         context_text = "\n".join([f"- {r['text']}" for r in context_results])
                         print(f"\n🧠 Contexto recuperado de la memoria:\n{context_text}")
 
-                # Ejecutar agente orquestador (siempre disponible si el Chat CLI se ejecuta correctamente)
-                if ORQUESTADOR_AVAILABLE:
+                # Ejecutar agente orquestador (con LLM dinámico)
+                if ORQUESTADOR_LLM_AVAILABLE:
                     try:
                         # Preparar historial para el agente orquestador
                         conversation_history = [
                             {"role": msg.type if isinstance(msg.type, str) else msg.type.value, "content": msg.content}
                             for msg in chat_session.messages
                         ]
-                        
-                        # Ejecutar agente orquestador
-                        orquestador_result = run_orquestador(user_input, conversation_history)
-                        
-                        if orquestador_result['success']:
-                            response_text = orquestador_result['response']
-                            print(f"\n🧠 Agente orquestador: {orquestador_result['tool_used']} -> {orquestador_result['intent']}")
+
+                        # Ejecutar orquestador con LLM (dinámico)
+                        print("\n🤖 Analizando tu solicitud con IA...")
+                        orquestador_result = run_orchestrator_llm(user_input, conversation_history)
+
+                        if orquestador_result and isinstance(orquestador_result, dict):
+                            if orquestador_result.get('success'):
+                                response_text = orquestador_result.get('response', 'Sin respuesta')
+                                intention = orquestador_result.get('intention', 'unknown')
+                                tool_results = orquestador_result.get('tool_results', [])
+                                tools_used = [tr.get('tool', 'unknown') for tr in tool_results if tr.get('success')]
+
+                                if tools_used:
+                                    print(f"\n🧠 Herramientas ejecutadas: {', '.join(tools_used)}")
+                                    print(f"📋 Intención: {intention}")
+                            else:
+                                response_text = orquestador_result.get('response', 'Error sin respuesta')
+                                print(f"\n⚠️ Error en orquestador: {orquestador_result.get('error', 'error desconocido')}")
                         else:
-                            response_text = orquestador_result['response']
-                            print(f"\n⚠️ Error en agente orquestador: {orquestador_result.get('error')}")
+                            response_text = f"❌ Respuesta inválida del orquestador: {type(orquestador_result)}"
+                            print(f"\n{response_text}")
+                    except Exception as e:
+                        response_text = f"❌ Error crítico: {str(e)}"
+                        print(f"\n{response_text}")
+                elif ORQUESTADOR_AVAILABLE:
+                    # Fallback al orquestador basado en reglas
+                    try:
+                        # Preparar historial para el agente orquestador
+                        conversation_history = [
+                            {"role": msg.type if isinstance(msg.type, str) else msg.type.value, "content": msg.content}
+                            for msg in chat_session.messages
+                        ]
+
+                        # Ejecutar agente orquestador (basado en reglas)
+                        orquestador_result = run_orquestador(user_input, conversation_history)
+
+                        if orquestador_result and isinstance(orquestador_result, dict):
+                            if orquestador_result.get('success'):
+                                response_text = orquestador_result.get('response', 'Sin respuesta')
+                                print(f"\n🧠 Agente orquestador: {orquestador_result.get('tool_used', 'unknown')} -> {orquestador_result.get('intent', 'unknown')}")
+                            else:
+                                response_text = orquestador_result.get('response', 'Error sin respuesta')
+                                print(f"\n⚠️ Error en agente orquestador: {orquestador_result.get('error', 'error desconocido')}")
+                        else:
+                            response_text = f"❌ Respuesta inválida del orquestador: {type(orquestador_result)}"
+                            print(f"\n{response_text}")
                     except Exception as e:
                         response_text = f"❌ Error crítico en agente orquestador: {str(e)}"
                         print(f"\n{response_text}")

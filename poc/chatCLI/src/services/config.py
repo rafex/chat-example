@@ -1,0 +1,71 @@
+import os
+from typing import Optional
+from dotenv import load_dotenv
+
+# Cargar .env desde el directorio poc
+current_dir = os.path.dirname(os.path.abspath(__file__))  # src/services
+chatcli_src = os.path.dirname(current_dir)  # src
+chatcli_dir = os.path.dirname(chatcli_src)  # chatCLI
+poc_dir = os.path.dirname(chatcli_dir)  # poc
+env_path = os.path.join(poc_dir, '.env')
+
+load_dotenv(dotenv_path=env_path)
+
+
+class Config:
+    # OpenWeatherMap API
+    OPENWEATHER_API_KEY: Optional[str] = os.getenv("OPENWEATHER_API_KEY")
+    OPENWEATHER_BASE_URL: str = "https://api.openweathermap.org/data/2.5"
+
+    # Configuración de Proveedores LLM
+    OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
+    OPENAI_BASE_URL: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+    DEEPSEEK_API_KEY: Optional[str] = os.getenv("DEEPSEEK_API_KEY")
+    DEEPSEEK_BASE_URL: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+    DEEPSEEK_MODEL: str = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+
+    OPENROUTER_API_KEY: Optional[str] = os.getenv("OPENROUTER_API_KEY")
+    OPENROUTER_BASE_URL: str = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "openai/gpt-oss-120b:free")
+
+    # Proveedor actual (por defecto deepseek para orquestación dinámica)
+    CURRENT_LLM_PROVIDER: str = os.getenv("CURRENT_LLM_PROVIDER", "deepseek")
+
+    @classmethod
+    def get_current_config(cls):
+        """Obtiene la configuración del proveedor LLM actualmente seleccionado"""
+        provider = cls.CURRENT_LLM_PROVIDER.lower()
+
+        if provider == "openai":
+            return {
+                "api_key": cls.OPENAI_API_KEY,
+                "base_url": cls.OPENAI_BASE_URL,
+                "model": cls.OPENAI_MODEL
+            }
+        elif provider == "deepseek":
+            return {
+                "api_key": cls.DEEPSEEK_API_KEY,
+                "base_url": cls.DEEPSEEK_BASE_URL,
+                "model": cls.DEEPSEEK_MODEL
+            }
+        elif provider == "openrouter":
+            return {
+                "api_key": cls.OPENROUTER_API_KEY,
+                "base_url": cls.OPENROUTER_BASE_URL,
+                "model": cls.OPENROUTER_MODEL
+            }
+        else:
+            # Fallback a DeepSeek
+            return {
+                "api_key": cls.DEEPSEEK_API_KEY,
+                "base_url": cls.DEEPSEEK_BASE_URL,
+                "model": cls.DEEPSEEK_MODEL
+            }
+
+    @classmethod
+    def set_provider(cls, provider: str):
+        """Cambia el proveedor LLM actual"""
+        cls.CURRENT_LLM_PROVIDER = provider
+        print(f"Proveedor LLM cambiado a: {provider}")
