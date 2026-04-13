@@ -1,0 +1,90 @@
+# Configuración global del sistema de agentes
+# Este archivo define URLs, modelos y providers.
+# Las claves API (API Keys) deben ir en el archivo .env por seguridad.
+
+# ==============================================================================
+# PROVIDERS CONFIGURATION
+# ==============================================================================
+
+[providers.openai]
+name = "OpenAI"
+base_url = "https://api.openai.com/v1"
+models = ["gpt-4o-mini", "gpt-4o"]
+provider_type = "openai"
+
+[providers.deepseek]
+name = "DeepSeek"
+base_url = "https://api.deepseek.com/v1"
+models = ["deepseek-chat", "deepseek-coder"]
+provider_type = "openai" # Compatibilidad con API OpenAI
+
+[providers.openrouter]
+name = "OpenRouter"
+base_url = "https://openrouter.ai/api/v1"
+models = ["openai/gpt-oss-safeguard-20b", "openai/gpt-oss-120b:free", "anthropic/claude-3-opus"]
+provider_type = "openai" # Compatibilidad con API OpenAI
+
+# ==============================================================================
+# DEFAULT SETTINGS
+# ==============================================================================
+
+[settings]
+default_provider = "openrouter"
+default_model = "openai/gpt-oss-120b:free"
+debug_mode = false
+timeout_seconds = 30
+
+# ==============================================================================
+# AGENT SPECIFIC CONFIGURATIONS
+# ==============================================================================
+
+[agents.orquestador]
+model = "deepseek-chat"
+provider = "deepseek"
+system_prompt = "agents/prompts/orquestador_system.txt"
+
+[agents.guard]
+model = "openai/gpt-oss-safeguard-20b"
+provider = "openrouter"
+system_prompt = "agents/prompts/guard_system.txt"
+enabled = true
+# Niveles de seguridad: low, medium, high
+security_level = "medium"
+
+[agents.weather]
+model = "deepseek-chat"
+provider = "deepseek"
+
+# ==============================================================================
+# MEMORY CONFIGURATION
+# ==============================================================================
+
+[memory]
+semantic_backend = "sentence-transformers" # sentence-transformers | tfidf
+sentence_model = "all-MiniLM-L6-v2"
+faiss_index_path = "~/.agentes-langgraph/memory"
+temp_sessions_path = "~/.agentes-langgraph/temp_sessions"
+max_conversation_turns = 10
+
+# ==============================================================================
+# TOOLS CONFIGURATION
+# ==============================================================================
+
+[tools.weather]
+enabled = true
+provider = "openweathermap"
+# API Key va en .env como OPENWEATHER_API_KEY
+
+[tools.mcp]
+enabled = true
+server_command = "uv run mcp-server-sse"
+
+# ==============================================================================
+# LOGGING CONFIGURATION
+# ==============================================================================
+
+[logging]
+level = "INFO" # DEBUG, INFO, WARNING, ERROR
+file_path = "~/.agentes-langgraph/logs/system.log"
+max_file_size_mb = 10
+backup_count = 5

@@ -39,16 +39,25 @@ for path in paths_to_add:
     if path not in sys.path:
         sys.path.insert(0, path)
 
-try:
-    from schemas.orquestador import OrquestadorState, IntentAnalysis, ToolExecutionResult, ToolType
-    from services.weather_agent_wrapper import execute_weather_agent, extract_location_from_text
-    from services.mcp_wrapper import execute_mcp_tool, list_mcp_tools
-    from registry.tool_registry import tool_registry
-    from validators.decision_validator import DecisionValidator
-    from services.logger import logger
-    from services.config_service import get_config
-    from services.session_service import get_session_manager
-except ImportError:
+    try:
+        from schemas.orquestador import OrquestadorState, IntentAnalysis, ToolExecutionResult, ToolType
+        from services.weather_agent_wrapper import execute_weather_agent, extract_location_from_text
+        from services.mcp_wrapper import execute_mcp_tool, list_mcp_tools
+        from registry.tool_registry import tool_registry
+        from validators.decision_validator import DecisionValidator
+        from services.logger import logger
+        from services.config_service import get_config
+        from services.session_service import get_session_manager
+        
+        # Importar GuardAgent si está disponible
+        try:
+            from agents.guard_agent import get_guard_agent
+            GUARD_AVAILABLE = True
+        except ImportError:
+            GUARD_AVAILABLE = False
+            get_guard_agent = None
+    except ImportError as e:
+        raise ImportError(f"No se pudo importar los módulos necesarios: {e}")
     try:
         from schemas.orquestador import OrquestadorState, IntentAnalysis, ToolExecutionResult, ToolType
         from services.weather_agent_wrapper import execute_weather_agent, extract_location_from_text
@@ -930,6 +939,86 @@ def format_response_node(state: OrquestadorState) -> OrquestadorState:
     return new_state
 
 
+def security_validation_node(state: OrquestadorState) -> OrquestadorState:
+    """Nodo: Valida la seguridad de la respuesta usando GuardAgent"""
+    new_state = dict(state)
+    
+    # Verificar si GuardAgent está disponible y habilitado
+    config = get_config()
+    guard_config = config.get_guard_config()
+    
+    if not guard_config.get('enabled', False) or not GUARD_AVAILABLE:
+        # Si el guard no está habilitado o disponible, saltar validación
+        new_state['security_validated'] = True
+        new_state['security_issues'] = []
+        return new_state
+    
+    # Obtener respuesta a validar
+    final_response = state.get('final_response', '')
+    user_message = state.get('user_message', '')
+    
+    if not final_response:
+        new_state['security_validated'] = True
+        new_state['security_issues'] = []
+        return new_state
+    
+    try:
+        # Obtener instancia del GuardAgent
+        guard_agent = get_guard_agent()
+        
+        # Revisar la respuesta
+        session_id = state.get('session_id', 'unknown')
+        turn_id = state.get('turn_id', 0)
+        
+        result = guard_agent.review_response(
+            response_text=final_response,
+            context=f"User: {user_message}"
+        )
+        
+        # Registrar resultado de validación de seguridad
+        logger.log_event(
+            session_id=session_id,
+            turn_id=turn_id,
+            event_type="security_validation",
+            status="success" if result.get('safe', False) else "warning",
+            message=f"Validación de seguridad: {'Aprobada' if result.get('safe', False) else 'Requiere revisión'}",
+            details={
+                "safe": result.get('safe', False),
+                "issues": result.get('issues', []),
+                "severity": result.get('severity', 'low'),
+                "reason": result.get('reason', '')
+            }
+        )
+        
+        # Actualizar estado
+        new_state['security_validated'] = result.get('safe', True)
+        new_state['security_issues'] = result.get('issues', [])
+        
+        # Si hay problemas de seguridad, modificar respuesta
+        if not result.get('safe', True):
+            issues_text = ", ".join(result.get('issues', []))
+            new_state['final_response'] = (
+                f"⚠️ [Seguridad] La respuesta ha sido marcada con problemas: {issues_text}\n\n"
+                f"{final_response}"
+            )
+        
+    except Exception as e:
+        session_id = state.get('session_id', 'unknown')
+        turn_id = state.get('turn_id', 0)
+        
+        logger.log_error(
+            session_id=session_id,
+            turn_id=turn_id,
+            error_type="security_validation",
+            message=f"Error en validación de seguridad: {str(e)}"
+        )
+        
+        new_state['security_validated'] = True  # Fallback: confiar en la respuesta
+        new_state['security_issues'] = []
+    
+    return new_state
+
+
 def persist_memory_node(state: OrquestadorState) -> OrquestadorState:
     """Nodo: Persiste información en memoria"""
     # En una implementación real, esto guardaría en FAISS
@@ -964,6 +1053,7 @@ def build_orquestador_graph() -> CompiledStateGraph:
     builder.add_node("execute_tool", execute_tool_node)
     builder.add_node("generic_chat", generic_chat_node)
     builder.add_node("format_response", format_response_node)
+    builder.add_node("security_validation", security_validation_node)
     builder.add_node("persist_memory", persist_memory_node)
     
     # Definir flujo
@@ -985,7 +1075,8 @@ def build_orquestador_graph() -> CompiledStateGraph:
     
     builder.add_edge("execute_tool", "format_response")
     builder.add_edge("generic_chat", "format_response")
-    builder.add_edge("format_response", "persist_memory")
+    builder.add_edge("format_response", "security_validation")
+    builder.add_edge("security_validation", "persist_memory")
     builder.add_edge("persist_memory", END)
     
     return builder.compile()
