@@ -18,17 +18,31 @@ _project_root = os.path.dirname(os.path.dirname(os.path.dirname(_chatcli_src)))
 if _chatcli_src not in sys.path:
     sys.path.insert(0, _chatcli_src)
 
-# Importar servicios
+# Importar servicios usando rutas absolutas para evitar colisión de namespaces
+# con agent-weather (ambos tienen un paquete llamado 'services')
+def _import_from_file(module_name: str, file_path: str):
+    """Carga un módulo desde su ruta absoluta, sin depender de sys.path."""
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    if spec is None:
+        raise ImportError(f"No se pudo crear spec para {file_path}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+_services_dir = os.path.join(_chatcli_src, "services")
+
 try:
-    from services.mcp_client import MCPClient
-except ImportError as e:
+    _mcp_mod = _import_from_file("chatcli_mcp_client", os.path.join(_services_dir, "mcp_client.py"))
+    MCPClient = _mcp_mod.MCPClient
+except Exception as e:
     print(f"⚠️ MCPClient no disponible: {e}")
     MCPClient = None
 
 try:
-    from services.agent_client import call_weather_agent as _weather_fn
+    _agent_client_mod = _import_from_file("chatcli_agent_client", os.path.join(_services_dir, "agent_client.py"))
+    _weather_fn = _agent_client_mod.call_weather_agent
     _WEATHER_AVAILABLE = True
-except ImportError as e:
+except Exception as e:
     print(f"⚠️ AgentClient no disponible: {e}")
     _weather_fn = None
     _WEATHER_AVAILABLE = False
@@ -101,28 +115,20 @@ class LLMOrchestrator:
         return description
 
     def _call_llm(self, prompt: str, system_msg: str = "") -> str:
-        """Llama a DeepSeek LLM"""
+        """Llama a DeepSeek LLM usando ruta absoluta para evitar conflictos de namespace."""
         try:
-            # Importar servicio de LLM local
-            import sys
-            import os
-            services_dir = os.path.join(os.path.dirname(__file__), '..', 'services')
-            if services_dir not in sys.path:
-                sys.path.insert(0, services_dir)
-
-            from deepseek_service import LLMProviderService
-
-            service = LLMProviderService()
+            llm_mod = _import_from_file(
+                "chatcli_deepseek_service",
+                os.path.join(_services_dir, "deepseek_service.py"),
+            )
+            service = llm_mod.LLMProviderService()
             messages = []
             if system_msg:
                 messages.append({"role": "system", "content": system_msg})
             messages.append({"role": "user", "content": prompt})
-            response = service.chat(messages)
-            return response
+            return service.chat(messages)
         except Exception as e:
             print(f"⚠️ Error llamando a LLM: {e}")
-            import traceback
-            traceback.print_exc()
             return ""
 
     def analyze_and_execute(
